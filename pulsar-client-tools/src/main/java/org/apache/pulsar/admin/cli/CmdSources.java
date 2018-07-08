@@ -101,7 +101,7 @@ public class CmdSources extends CmdBase {
     }
 
     @Parameters(commandDescription = "Run a Pulsar IO source connector locally (rather than deploying it to the Pulsar cluster)")
-    class LocalSourceRunner extends CreateSource {
+    protected class LocalSourceRunner extends CreateSource {
 
         @Parameter(names = "--brokerServiceUrl", description = "The URL for the Pulsar broker")
         protected String brokerServiceUrl;
@@ -138,7 +138,7 @@ public class CmdSources extends CmdBase {
     }
 
     @Parameters(commandDescription = "Submit a Pulsar IO source connector to run in a Pulsar cluster")
-    public class CreateSource extends SourceCommand {
+    protected class CreateSource extends SourceCommand {
         @Override
         void runCmd() throws Exception {
             if (Utils.isFunctionPackageUrlSupported(this.sourceConfig.getArchive())) {
@@ -151,7 +151,7 @@ public class CmdSources extends CmdBase {
     }
 
     @Parameters(commandDescription = "Update a Pulsar IO source connector")
-    public class UpdateSource extends SourceCommand {
+    protected class UpdateSource extends SourceCommand {
         @Override
         void runCmd() throws Exception {
             if (Utils.isFunctionPackageUrlSupported(sourceConfig.getArchive())) {
@@ -232,15 +232,33 @@ public class CmdSources extends CmdBase {
                 sourceConfig.setArchive(archive);
             }
 
-            sourceConfig.setResources(new org.apache.pulsar.functions.utils.Resources(cpu, ram, disk));
+            org.apache.pulsar.functions.utils.Resources resources = sourceConfig.getResources();
+            if (resources == null) {
+                resources = new org.apache.pulsar.functions.utils.Resources();
+            }
+            if (cpu != null) {
+                resources.setCpu(cpu);
+            }
+
+            if (ram != null) {
+                resources.setRam(ram);
+            }
+
+            if (disk != null) {
+                resources.setDisk(disk);
+            }
+            sourceConfig.setResources(resources);
 
             if (null != sourceConfigString) {
-                Type type = new TypeToken<Map<String, String>>(){}.getType();
-                Map<String, Object> sourceConfigMap = new Gson().fromJson(sourceConfigString, type);
-                sourceConfig.setConfigs(sourceConfigMap);
+                sourceConfig.setConfigs(parseConfigs(sourceConfigString));
             }
 
             inferMissingArguments(sourceConfig);
+        }
+
+        protected Map<String, Object> parseConfigs(String str) {
+            Type type = new TypeToken<Map<String, String>>(){}.getType();
+            return new Gson().fromJson(str, type);
         }
 
         private void inferMissingArguments(SourceConfig sourceConfig) {
@@ -294,7 +312,7 @@ public class CmdSources extends CmdBase {
                     // Validate source class
                     ConnectorUtils.getIOSourceClass(archivePath);
                 } catch (IOException e) {
-                    throw new ParameterException("Failed to validate connector from " + archivePath, e);
+                    throw new ParameterException("Connector from " + archivePath + " has error: " + e.getMessage());
                 }
             }
 
@@ -302,8 +320,7 @@ public class CmdSources extends CmdBase {
              // Need to load jar and set context class loader before calling
                 ConfigValidation.validateConfig(sourceConfig, FunctionConfig.Runtime.JAVA.name());
             } catch (Exception e) {
-                e.printStackTrace();
-                throw new ParameterException(e);
+                throw new ParameterException(e.getMessage());
             }
         }
 
@@ -394,7 +411,7 @@ public class CmdSources extends CmdBase {
     }
 
     @Parameters(commandDescription = "Stops a Pulsar IO source connector")
-    class DeleteSource extends BaseCommand {
+    protected class DeleteSource extends BaseCommand {
 
         @Parameter(names = "--tenant", description = "The tenant of a sink or source")
         protected String tenant;
