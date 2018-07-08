@@ -426,7 +426,7 @@ public class CmdSources extends CmdBase {
         void processArguments() throws Exception {
             super.processArguments();
             if (null == name) {
-                throw new RuntimeException(
+                throw new ParameterException(
                         "You must specify a name for the source");
             }
             if (tenant == null) {

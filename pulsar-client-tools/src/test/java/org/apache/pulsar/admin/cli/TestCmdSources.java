@@ -29,7 +29,6 @@ import org.apache.pulsar.functions.utils.FunctionConfig;
 import org.apache.pulsar.functions.utils.Reflections;
 import org.apache.pulsar.functions.utils.Resources;
 import org.apache.pulsar.functions.utils.SourceConfig;
-import org.apache.pulsar.io.twitter.TwitterFireHose;
 import org.mockito.Mockito;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
@@ -694,179 +693,167 @@ public class TestCmdSources {
         verify(localSourceRunner).validateSourceConfigs(eq(expectedSourceConfig));
     }
 
-//
-//    @Test
-//    public void testCliOverwriteConfigFile() throws Exception {
-//
-//        SourceConfig testSourceConfig = new SourceConfig();
-//        testSourceConfig.setTenant(TENANT + "-prime");
-//        testSourceConfig.setNamespace(NAMESPACE + "-prime");
-//        testSourceConfig.setName(NAME + "-prime");
-//
-//        Map<String, String> topicsToSerDeClassName = new HashMap<>();
-//        createSource.parseInputs(INPUTS + ",test-src-prime", topicsToSerDeClassName);
-//        createSource.parseCustomSerdeInput("{\"test_src3-prime\": \"\"}", topicsToSerDeClassName);
-//        testSourceConfig.setTopicToSerdeClassName(topicsToSerDeClassName);
-//
-//        testSourceConfig.setTopicsPattern(TOPIC_PATTERN + "-prime");
-//        testSourceConfig.setProcessingGuarantees(FunctionConfig.ProcessingGuarantees.EFFECTIVELY_ONCE);
-//        testSourceConfig.setParallelism(PARALLELISM + 1);
-//        testSourceConfig.setArchive(JAR_FILE_PATH + "-prime");
-//        testSourceConfig.setResources(new Resources(CPU + 1, RAM + 1, DISK + 1));
-//        testSourceConfig.setConfigs(createSource.parseConfigs("{\"created_at-prime\":\"Mon Jul 02 00:33:15 +0000 2018\"}"));
-//
-//
-//        SourceConfig expectedSourceConfig = getSourceConfig();
-//
-//        File file = Files.createTempFile("", "").toFile();
-//
-//        new YAMLMapper().writeValue(file, testSourceConfig);
-//
-//        Assert.assertEquals(testSourceConfig, CmdUtils.loadConfig(file.getAbsolutePath(), SourceConfig.class));
-//
-//        testMixCliAndConfigFile(
-//                TENANT,
-//                NAMESPACE,
-//                NAME,
-//                CLASS_NAME,
-//                INPUTS,
-//                TOPIC_PATTERN,
-//                CUSTOM_SERDE_INPUT_STRING,
-//                PROCESSING_GUARANTEES,
-//                PARALLELISM,
-//                JAR_FILE_PATH,
-//                CPU,
-//                RAM,
-//                DISK,
-//                SINK_CONFIG_STRING,
-//                file.getAbsolutePath(),
-//                expectedSourceConfig
-//        );
-//    }
-//
-//    public void testMixCliAndConfigFile(
-//            String tenant,
-//            String namespace,
-//            String name,
-//            String className,
-//            String inputs,
-//            String topicPattern,
-//            String customSerdeInputString,
-//            FunctionConfig.ProcessingGuarantees processingGuarantees,
-//            Integer parallelism,
-//            String jarFile,
-//            Double cpu,
-//            Long ram,
-//            Long disk,
-//            String sourceConfigString,
-//            String sourceConfigFile,
-//            SourceConfig sourceConfig
-//    ) throws Exception {
-//
-//
-//        // test create source
-//        createSource.tenant = tenant;
-//        createSource.namespace = namespace;
-//        createSource.name = name;
-//        createSource.inputs = inputs;
-//        createSource.topicsPattern = topicPattern;
-//        createSource.customSerdeInputString = customSerdeInputString;
-//        createSource.processingGuarantees = processingGuarantees;
-//        createSource.parallelism = parallelism;
-//        createSource.archive = jarFile;
-//        createSource.cpu = cpu;
-//        createSource.ram = ram;
-//        createSource.disk = disk;
-//        createSource.sourceConfigString = sourceConfigString;
-//        createSource.sourceConfigFile = sourceConfigFile;
-//
-//        createSource.processArguments();
-//
-//        createSource.runCmd();
-//
-//        // test update source
-//        updateSource.tenant = tenant;
-//        updateSource.namespace = namespace;
-//        updateSource.name = name;
-//        updateSource.inputs = inputs;
-//        updateSource.topicsPattern = topicPattern;
-//        updateSource.customSerdeInputString = customSerdeInputString;
-//        updateSource.processingGuarantees = processingGuarantees;
-//        updateSource.parallelism = parallelism;
-//        updateSource.archive = jarFile;
-//        updateSource.cpu = cpu;
-//        updateSource.ram = ram;
-//        updateSource.disk = disk;
-//        updateSource.sourceConfigString = sourceConfigString;
-//        updateSource.sourceConfigFile = sourceConfigFile;
-//
-//
-//        updateSource.processArguments();
-//
-//        updateSource.runCmd();
-//
-//        // test local runner
-//        localSourceRunner.tenant = tenant;
-//        localSourceRunner.namespace = namespace;
-//        localSourceRunner.name = name;
-//        localSourceRunner.inputs = inputs;
-//        localSourceRunner.topicsPattern = topicPattern;
-//        localSourceRunner.customSerdeInputString = customSerdeInputString;
-//        localSourceRunner.processingGuarantees = processingGuarantees;
-//        localSourceRunner.parallelism = parallelism;
-//        localSourceRunner.archive = jarFile;
-//        localSourceRunner.cpu = cpu;
-//        localSourceRunner.ram = ram;
-//        localSourceRunner.disk = disk;
-//        localSourceRunner.sourceConfigString = sourceConfigString;
-//        localSourceRunner.sourceConfigFile = sourceConfigFile;
-//
-//
-//        localSourceRunner.processArguments();
-//
-//        localSourceRunner.runCmd();
-//
-//        verify(createSource).validateSourceConfigs(eq(sourceConfig));
-//        verify(updateSource).validateSourceConfigs(eq(sourceConfig));
-//        verify(localSourceRunner).validateSourceConfigs(eq(sourceConfig));
-//    }
-//
-//    @Test
-//    public void testDeleteMissingTenant() throws Exception {
-//        deleteSource.tenant = null;
-//        deleteSource.namespace = NAMESPACE;
-//        deleteSource.name = NAME;
-//
-//        deleteSource.processArguments();
-//
-//        deleteSource.runCmd();
-//
-//        verify(functions).deleteFunction(eq(PUBLIC_TENANT), eq(NAMESPACE), eq(NAME));
-//    }
-//
-//    @Test
-//    public void testDeleteMissingNamespace() throws Exception {
-//        deleteSource.tenant = TENANT;
-//        deleteSource.namespace = null;
-//        deleteSource.name = NAME;
-//
-//        deleteSource.processArguments();
-//
-//        deleteSource.runCmd();
-//
-//        verify(functions).deleteFunction(eq(TENANT), eq(DEFAULT_NAMESPACE), eq(NAME));
-//    }
-//
-//    @Test(expectedExceptions = ParameterException.class, expectedExceptionsMessageRegExp = "You must specify a name for the source")
-//    public void testDeleteMissingName() throws Exception {
-//        deleteSource.tenant = TENANT;
-//        deleteSource.namespace = NAMESPACE;
-//        deleteSource.name = null;
-//
-//        deleteSource.processArguments();
-//
-//        deleteSource.runCmd();
-//
-//        verify(functions).deleteFunction(eq(TENANT), eq(NAMESPACE), null);
-//    }
+
+    @Test
+    public void testCliOverwriteConfigFile() throws Exception {
+
+        SourceConfig testSourceConfig = new SourceConfig();
+        testSourceConfig.setTenant(TENANT + "-prime");
+        testSourceConfig.setNamespace(NAMESPACE + "-prime");
+        testSourceConfig.setName(NAME + "-prime");
+        testSourceConfig.setTopicName(TOPIC_NAME + "-prime");
+        testSourceConfig.setSerdeClassName(SERDE_CLASS_NAME + "-prime");
+        testSourceConfig.setProcessingGuarantees(FunctionConfig.ProcessingGuarantees.EFFECTIVELY_ONCE);
+        testSourceConfig.setParallelism(PARALLELISM + 1);
+        testSourceConfig.setArchive(JAR_FILE_PATH + "-prime");
+        testSourceConfig.setResources(new Resources(CPU + 1, RAM + 1, DISK + 1));
+        testSourceConfig.setConfigs(createSource.parseConfigs("{\"created_at-prime\":\"Mon Jul 02 00:33:15 +0000 2018\"}"));
+
+
+        SourceConfig expectedSourceConfig = getSourceConfig();
+
+        File file = Files.createTempFile("", "").toFile();
+
+        new YAMLMapper().writeValue(file, testSourceConfig);
+
+        Assert.assertEquals(testSourceConfig, CmdUtils.loadConfig(file.getAbsolutePath(), SourceConfig.class));
+
+        testMixCliAndConfigFile(
+                TENANT,
+                NAMESPACE,
+                NAME,
+                TOPIC_NAME,
+                SERDE_CLASS_NAME,
+                PROCESSING_GUARANTEES,
+                PARALLELISM,
+                JAR_FILE_PATH,
+                CPU,
+                RAM,
+                DISK,
+                SINK_CONFIG_STRING,
+                file.getAbsolutePath(),
+                expectedSourceConfig
+        );
+    }
+
+    public void testMixCliAndConfigFile(
+            String tenant,
+            String namespace,
+            String name,
+            String topicName,
+            String serdeClassName,
+            FunctionConfig.ProcessingGuarantees processingGuarantees,
+            Integer parallelism,
+            String jarFile,
+            Double cpu,
+            Long ram,
+            Long disk,
+            String sourceConfigString,
+            String sourceConfigFile,
+            SourceConfig sourceConfig
+    ) throws Exception {
+
+
+        // test create source
+        createSource.tenant = tenant;
+        createSource.namespace = namespace;
+        createSource.name = name;
+        createSource.destinationTopicName = topicName;
+        createSource.deserializationClassName = serdeClassName;
+        createSource.processingGuarantees = processingGuarantees;
+        createSource.parallelism = parallelism;
+        createSource.archive = jarFile;
+        createSource.cpu = cpu;
+        createSource.ram = ram;
+        createSource.disk = disk;
+        createSource.sourceConfigString = sourceConfigString;
+        createSource.sourceConfigFile = sourceConfigFile;
+
+        createSource.processArguments();
+
+        createSource.runCmd();
+
+        // test update source
+        updateSource.tenant = tenant;
+        updateSource.namespace = namespace;
+        updateSource.name = name;
+        updateSource.destinationTopicName = topicName;
+        updateSource.deserializationClassName = serdeClassName;
+        updateSource.processingGuarantees = processingGuarantees;
+        updateSource.parallelism = parallelism;
+        updateSource.archive = jarFile;
+        updateSource.cpu = cpu;
+        updateSource.ram = ram;
+        updateSource.disk = disk;
+        updateSource.sourceConfigString = sourceConfigString;
+        updateSource.sourceConfigFile = sourceConfigFile;
+
+
+        updateSource.processArguments();
+
+        updateSource.runCmd();
+
+        // test local runner
+        localSourceRunner.tenant = tenant;
+        localSourceRunner.namespace = namespace;
+        localSourceRunner.name = name;
+        localSourceRunner.destinationTopicName = topicName;
+        localSourceRunner.deserializationClassName = serdeClassName;
+        localSourceRunner.processingGuarantees = processingGuarantees;
+        localSourceRunner.parallelism = parallelism;
+        localSourceRunner.archive = jarFile;
+        localSourceRunner.cpu = cpu;
+        localSourceRunner.ram = ram;
+        localSourceRunner.disk = disk;
+        localSourceRunner.sourceConfigString = sourceConfigString;
+        localSourceRunner.sourceConfigFile = sourceConfigFile;
+
+
+        localSourceRunner.processArguments();
+
+        localSourceRunner.runCmd();
+
+        verify(createSource).validateSourceConfigs(eq(sourceConfig));
+        verify(updateSource).validateSourceConfigs(eq(sourceConfig));
+        verify(localSourceRunner).validateSourceConfigs(eq(sourceConfig));
+    }
+
+    @Test
+    public void testDeleteMissingTenant() throws Exception {
+        deleteSource.tenant = null;
+        deleteSource.namespace = NAMESPACE;
+        deleteSource.name = NAME;
+
+        deleteSource.processArguments();
+
+        deleteSource.runCmd();
+
+        verify(functions).deleteFunction(eq(PUBLIC_TENANT), eq(NAMESPACE), eq(NAME));
+    }
+
+    @Test
+    public void testDeleteMissingNamespace() throws Exception {
+        deleteSource.tenant = TENANT;
+        deleteSource.namespace = null;
+        deleteSource.name = NAME;
+
+        deleteSource.processArguments();
+
+        deleteSource.runCmd();
+
+        verify(functions).deleteFunction(eq(TENANT), eq(DEFAULT_NAMESPACE), eq(NAME));
+    }
+
+    @Test(expectedExceptions = ParameterException.class, expectedExceptionsMessageRegExp = "You must specify a name for the source")
+    public void testDeleteMissingName() throws Exception {
+        deleteSource.tenant = TENANT;
+        deleteSource.namespace = NAMESPACE;
+        deleteSource.name = null;
+
+        deleteSource.processArguments();
+
+        deleteSource.runCmd();
+
+        verify(functions).deleteFunction(eq(TENANT), eq(NAMESPACE), null);
+    }
 }
