@@ -26,9 +26,12 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.text.WordUtils;
 import org.apache.pulsar.admin.cli.utils.CmdUtils;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.internal.FunctionsImpl;
+import org.apache.pulsar.common.io.ConnectorDefinition;
 import org.apache.pulsar.common.nar.NarClassLoader;
 import org.apache.pulsar.functions.api.utils.IdentityFunction;
 import org.apache.pulsar.functions.instance.AuthenticationConfig;
@@ -40,7 +43,6 @@ import org.apache.pulsar.functions.proto.Function.SourceSpec;
 import org.apache.pulsar.functions.utils.FunctionConfig;
 import org.apache.pulsar.functions.utils.SinkConfig;
 import org.apache.pulsar.functions.utils.Utils;
-import org.apache.pulsar.functions.utils.io.ConnectorDefinition;
 import org.apache.pulsar.functions.utils.io.ConnectorUtils;
 import org.apache.pulsar.functions.utils.validation.ConfigValidation;
 
@@ -82,6 +84,7 @@ public class CmdSinks extends CmdBase {
         jcommander.addCommand("update", updateSink);
         jcommander.addCommand("delete", deleteSink);
         jcommander.addCommand("localrun", localSinkRunner);
+        jcommander.addCommand("available-sinks", new ListSinks());
     }
 
     /**
@@ -468,6 +471,19 @@ public class CmdSinks extends CmdBase {
         void runCmd() throws Exception {
             admin.functions().deleteFunction(tenant, namespace, name);
             print("Deleted successfully");
+        }
+    }
+
+    @Parameters(commandDescription = "Get the list of Pulsar IO connector sinks supported by Pulsar cluster")
+    public class ListSinks extends SinkCommand {
+        @Override
+        void runCmd() throws Exception {
+            admin.functions().getConnectorsList().stream().filter(x -> !StringUtils.isEmpty(x.getSinkClass()))
+                    .forEach(connector -> {
+                        System.out.println(connector.getName());
+                        System.out.println(WordUtils.wrap(connector.getDescription(), 80));
+                        System.out.println("----------------------------------------");
+                    });
         }
     }
 }
