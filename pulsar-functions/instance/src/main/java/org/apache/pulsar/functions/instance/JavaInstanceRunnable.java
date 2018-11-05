@@ -205,6 +205,8 @@ public class JavaInstanceRunnable implements AutoCloseable, Runnable {
             }
             while (true) {
                 currentRecord = readInput();
+                // inc the number of received messages
+                stats.statsTotalReceived.inc();
 
                 if (instanceConfig.getFunctionDetails().getProcessingGuarantees() == org.apache.pulsar.functions
                         .proto.Function.ProcessingGuarantees.ATMOST_ONCE) {
@@ -217,6 +219,7 @@ public class JavaInstanceRunnable implements AutoCloseable, Runnable {
                 JavaExecutionResult result;
 
                 // set last invocation time
+                stats.statlastInvocation.set(System.currentTimeMillis());
                 stats.setLastInvocationTime(System.currentTimeMillis());
 
                 // start time for process latency stat
@@ -336,7 +339,6 @@ public class JavaInstanceRunnable implements AutoCloseable, Runnable {
             stats.addUserException(result.getUserException() );
             srcRecord.fail();
         } else {
-            stats.statTotalProcessedSuccessfully.labels(metricsLabels).inc();
             if (result.getResult() != null) {
                 sendOutputMessage(srcRecord, result.getResult());
             } else {
@@ -345,6 +347,7 @@ public class JavaInstanceRunnable implements AutoCloseable, Runnable {
                     srcRecord.ack();
                 }
             }
+            stats.statTotalProcessedSuccessfully.labels(metricsLabels).inc();
         }
     }
 

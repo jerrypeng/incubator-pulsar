@@ -21,6 +21,7 @@ package org.apache.pulsar.functions.instance;
 import com.google.common.collect.EvictingQueue;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
+import io.prometheus.client.Gauge;
 import io.prometheus.client.Summary;
 import lombok.Getter;
 import lombok.Setter;
@@ -39,6 +40,8 @@ public class FunctionStats {
 
     /** Declare Prometheus stats **/
 
+    final Counter statsTotalReceived;
+
     final Counter statTotalProcessed;
 
     final Counter statTotalProcessedSuccessfully;
@@ -48,6 +51,8 @@ public class FunctionStats {
     final Counter statTotalUserExceptions;
 
     final Summary statProcessLatency;
+
+    final Gauge statlastInvocation;
 
     CollectorRegistry functionCollectorRegistry;
 
@@ -64,6 +69,12 @@ public class FunctionStats {
         // Declare function local collector registry so that it will not clash with other function instances'
         // metrics collection especially in threaded mode
         functionCollectorRegistry = new CollectorRegistry();
+
+        statsTotalReceived = Counter.build()
+                .name("pulsar_function_recieved_total")
+                .help("Total number of messages received from source.")
+                .labelNames(metricsLabelNames)
+                .register(collectorRegistry);
 
         statTotalProcessed = Counter.build()
                 .name("pulsar_function_processed_total")
@@ -90,13 +101,21 @@ public class FunctionStats {
                 .register(collectorRegistry);
 
         statProcessLatency = Summary.build()
-                .name("pulsar_function_process_latency_ms").help("Process latency in milliseconds.")
+                .name("pulsar_function_process_latency_ms")
+                .help("Process latency in milliseconds.")
                 .quantile(0.5, 0.01)
                 .quantile(0.9, 0.01)
                 .quantile(0.99, 0.01)
                 .quantile(0.999, 0.01)
                 .labelNames(metricsLabelNames)
                 .register(collectorRegistry);
+
+        statlastInvocation = Gauge.build()
+                .name("pulsar_function_last_invocation")
+                .help("The timestamp of the last invocation of the function")
+                .labelNames(metricsLabelNames)
+                .register(collectorRegistry);
+
     }
 
     public void addUserException(Exception ex) {

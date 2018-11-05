@@ -66,7 +66,11 @@ message MetricsData {
         double max = 3;
         double min = 4;
     }
-    map<string, DataDigest> metrics = 1;
+
+//    map<string, DataDigest> metrics = 1;
+    map<string, DataDigest> metrics = 1 [deprecated=true];
+
+    map<string, double> statsMap = 2;
 }
 
 message HealthCheckResult {
