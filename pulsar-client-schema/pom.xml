@@ -147,6 +147,13 @@
                                 </filter>
                             </filters>
                             <relocations>
+                                <!--A work around so that we don't shade the protobuf imports in ProtobufSchema since
+                                 we shaded protobuf that is used internally. Users need to be able to pass in a regular
+                                 Protobuf message not shaded one.-->
+                                <relocation>
+                                    <pattern>com.google.protobuf</pattern>
+                                    <shadedPattern>pulsarsclientschema.com.google.protobuf</shadedPattern>
+                                </relocation>
                                 <relocation>
                                     <pattern>org.apache.avro</pattern>
                                     <shadedPattern>org.apache.pulsar.shade.org.apache.avro</shadedPattern>

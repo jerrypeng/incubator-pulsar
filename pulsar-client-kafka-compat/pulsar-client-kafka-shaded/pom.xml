@@ -183,6 +183,13 @@
                   <pattern>org.yaml</pattern>
                   <shadedPattern>org.apache.pulsar.shade.org.yaml</shadedPattern>
                 </relocation>
+                <!--A work around so that we don't shade the protobuf imports in ProtobufSchema since
+                  we shaded protobuf that is used internally. Users need to be able to pass in a regular
+                  Protobuf message not shaded one.-->
+                <relocation>
+                  <pattern>pulsarsclientschema.com.google.protobuf</pattern>
+                  <shadedPattern>com.google.protobuf</shadedPattern>
+                </relocation>
               </relocations>
               <filters>
                 <filter>

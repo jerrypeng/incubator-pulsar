@@ -40,6 +40,10 @@
       <version>${project.version}</version>
     </dependency>
 
+    <!--
+     we should eventuall remove pulsar-functions-proto from dependencies since
+     we shouldn't be returning protobufs from the cli
+     -->
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>pulsar-functions-proto</artifactId>

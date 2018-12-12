@@ -58,12 +58,12 @@
               <minimizeJar>false</minimizeJar>
 
               <artifactSet>
-                <excludes>
-                  <exclude>org.apache.pulsar:pulsar-client-schema</exclude>
-                </excludes>
+                <!--<excludes>-->
+                  <!--<exclude>org.apache.pulsar:pulsar-client-schema</exclude>-->
+                <!--</excludes>-->
                 <includes>
-                  <include>org.apache.pulsar:pulsar-io-core</include>
                   <include>org.apache.pulsar:pulsar-client-original</include>
+                  <include>org.apache.pulsar:pulsar-client-schema</include>
                   <include>org.apache.commons:commons-lang3</include>
                   <include>commons-codec:commons-codec</include>
                   <include>commons-collections:commons-collections</include>
@@ -99,12 +99,6 @@
                 </includes>
               </artifactSet>
               <filters>
-                <filter>
-                  <artifact>org.apache.pulsar:pulsar-io-core</artifact>
-                  <includes>
-                    <include>**</include>
-                  </includes>
-                </filter>
                 <filter>
                   <artifact>org.apache.pulsar:pulsar-client-original</artifact>
                   <includes>
@@ -178,6 +172,14 @@
                 <relocation>
                   <pattern>org.yaml</pattern>
                   <shadedPattern>org.apache.pulsar.shade.org.yaml</shadedPattern>
+                </relocation>
+
+                <!--A work around so that we don't shade the protobuf imports in ProtobufSchema since
+                we shaded protobuf that is used internally. Users need to be able to pass in a regular
+                Protobuf message not shaded one-->
+                <relocation>
+                  <pattern>pulsarsclientschema.com.google.protobuf</pattern>
+                  <shadedPattern>com.google.protobuf</shadedPattern>
                 </relocation>
               </relocations>
               <transformers>
