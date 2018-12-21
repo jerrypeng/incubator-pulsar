@@ -16,19 +16,31 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pulsar.broker.admin.v2;
+package org.apache.pulsar.io.test;
 
-import io.swagger.annotations.Api;
-import org.apache.pulsar.broker.admin.impl.SourceBase;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.io.core.RecordContext;
+import org.apache.pulsar.io.core.Sink;
+import org.apache.pulsar.io.core.SinkContext;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.MediaType;
+import java.util.Map;
 
-@Path("/source")
-@Api(value = "/source", description = "Source admin apis", tags = "source", hidden = true)
-@Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
-public class Source extends SourceBase {
+@Slf4j
+public class TestSink implements Sink<String> {
+
+    @Override
+    public void close() throws Exception {
+
+    }
+
+    @Override
+    public void open(Map<String, Object> config, SinkContext sinkContext) throws Exception {
+
+    }
+
+    @Override
+    public void write(RecordContext inputRecordContext, String value) throws Exception {
+        Thread.sleep(1000);
+        log.info("foo");
+    }
 }
