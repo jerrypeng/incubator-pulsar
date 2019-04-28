@@ -430,7 +430,7 @@ public class BlobStoreManagedLedgerOffloader implements LedgerOffloader {
                         .calculateBlockSize(maxBlockSize, readHandle, startEntry, entryBytesWritten);
 
                     try (BlockAwareSegmentInputStream blockStream = new BlockAwareSegmentInputStreamImpl(
-                        readHandle, startEntry, blockSize)) {
+                        readHandle, startEntry, blockSize, partId, indexBuilder)) {
 
                         Payload partPayload = Payloads.newInputStreamPayload(blockStream);
                         partPayload.getContentMetadata().setContentLength((long)blockSize);
@@ -438,8 +438,6 @@ public class BlobStoreManagedLedgerOffloader implements LedgerOffloader {
                         parts.add(writeBlobStore.uploadMultipartPart(mpu, partId, partPayload));
                         log.debug("UploadMultipartPart. container: {}, blobName: {}, partId: {}, mpu: {}",
                             writeBucket, dataBlockKey, partId, mpu.id());
-
-                        indexBuilder.addBlock(startEntry, partId, blockSize);
 
                         if (blockStream.getEndEntryId() != -1) {
                             startEntry = blockStream.getEndEntryId() + 1;

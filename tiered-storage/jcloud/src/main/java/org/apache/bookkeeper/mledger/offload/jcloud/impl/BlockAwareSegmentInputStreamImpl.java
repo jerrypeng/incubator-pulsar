@@ -36,6 +36,7 @@ import org.apache.bookkeeper.client.api.LedgerEntry;
 import org.apache.bookkeeper.client.api.ReadHandle;
 import org.apache.bookkeeper.mledger.offload.jcloud.BlockAwareSegmentInputStream;
 import org.apache.pulsar.common.allocator.PulsarByteBufAllocator;
+import org.apache.bookkeeper.mledger.offload.jcloud.OffloadIndexBlockBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +71,14 @@ public class BlockAwareSegmentInputStreamImpl extends BlockAwareSegmentInputStre
     // Keep a list of all entries ByteBuf, each ByteBuf contains 2 buf: entry header and entry content.
     private List<ByteBuf> entriesByteBuf = null;
 
+    private final int blockId;
+    private final OffloadIndexBlockBuilder index;
+
     public BlockAwareSegmentInputStreamImpl(ReadHandle ledger, long startEntryId, int blockSize) {
+        this(ledger, startEntryId, blockSize, 0, null);
+    }
+
+    public BlockAwareSegmentInputStreamImpl(ReadHandle ledger, long startEntryId, int blockSize, int blockId, OffloadIndexBlockBuilder index) {
         this.ledger = ledger;
         this.startEntryId = startEntryId;
         this.blockSize = blockSize;
@@ -78,6 +86,8 @@ public class BlockAwareSegmentInputStreamImpl extends BlockAwareSegmentInputStre
         this.blockEntryCount = 0;
         this.dataBlockFullOffset = blockSize;
         this.entriesByteBuf = Lists.newLinkedList();
+        this.index = index;
+        this.blockId = blockId;
     }
 
     // read ledger entries.
@@ -90,6 +100,11 @@ public class BlockAwareSegmentInputStreamImpl extends BlockAwareSegmentInputStre
             && entriesByteBuf.isEmpty()
             && startEntryId + blockEntryCount <= ledger.getLastAddConfirmed()) {
             entriesByteBuf = readNextEntriesFromLedger(startEntryId + blockEntryCount, ENTRIES_PER_READ);
+
+            // Update index
+            int sizeOfEntries = entriesByteBuf.stream().mapToInt(ByteBuf::readableBytes).sum();
+            long firstEntryId = startEntryId + blockEntryCount;
+            index.addBlock(firstEntryId, blockId, sizeOfEntries);
         }
 
         if (!entriesByteBuf.isEmpty() && bytesReadOffset + entriesByteBuf.get(0).readableBytes() <= blockSize) {
