@@ -19,247 +19,137 @@
 package org.apache.pulsar.functions.worker.rest.api;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.broker.authentication.AuthenticationDataHttps;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
 import org.apache.pulsar.client.admin.PulsarAdminException;
+import org.apache.pulsar.common.functions.FunctionConfig;
+import org.apache.pulsar.common.functions.UpdateOptions;
 import org.apache.pulsar.common.policies.data.ExceptionInformation;
 import org.apache.pulsar.common.policies.data.FunctionStatus;
 import org.apache.pulsar.functions.proto.Function;
 import org.apache.pulsar.functions.proto.InstanceCommunication;
+import org.apache.pulsar.functions.utils.FunctionConfigUtils;
 import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.functions.worker.rest.RestException;
+import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.function.Supplier;
+
+import static org.apache.pulsar.functions.worker.rest.RestUtils.throwUnavailableException;
 
 @Slf4j
 public class FunctionsImpl extends ComponentImpl {
-
-    private class GetFunctionStatus extends GetStatus<FunctionStatus, FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData> {
-
-        @Override
-        public FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData notScheduledInstance() {
-            FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData
-                    = new FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData();
-            functionInstanceStatusData.setRunning(false);
-            functionInstanceStatusData.setError("Function has not been scheduled");
-            return functionInstanceStatusData;
-        }
-
-        @Override
-        public FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData fromFunctionStatusProto(
-                InstanceCommunication.FunctionStatus status,
-                String assignedWorkerId) {
-            FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData
-                    = new FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData();
-            functionInstanceStatusData.setRunning(status.getRunning());
-            functionInstanceStatusData.setError(status.getFailureException());
-            functionInstanceStatusData.setNumRestarts(status.getNumRestarts());
-            functionInstanceStatusData.setNumReceived(status.getNumReceived());
-            functionInstanceStatusData.setNumSuccessfullyProcessed(status.getNumSuccessfullyProcessed());
-            functionInstanceStatusData.setNumUserExceptions(status.getNumUserExceptions());
-
-            List<ExceptionInformation> userExceptionInformationList = new LinkedList<>();
-            for (InstanceCommunication.FunctionStatus.ExceptionInformation exceptionEntry : status.getLatestUserExceptionsList()) {
-                ExceptionInformation exceptionInformation = getExceptionInformation(exceptionEntry);
-                userExceptionInformationList.add(exceptionInformation);
-            }
-            functionInstanceStatusData.setLatestUserExceptions(userExceptionInformationList);
-
-            // For regular functions source/sink errors are system exceptions
-            functionInstanceStatusData.setNumSystemExceptions(status.getNumSystemExceptions()
-                    + status.getNumSourceExceptions() + status.getNumSinkExceptions());
-            List<ExceptionInformation> systemExceptionInformationList = new LinkedList<>();
-            for (InstanceCommunication.FunctionStatus.ExceptionInformation exceptionEntry : status.getLatestSystemExceptionsList()) {
-                ExceptionInformation exceptionInformation = getExceptionInformation(exceptionEntry);
-                systemExceptionInformationList.add(exceptionInformation);
-            }
-            for (InstanceCommunication.FunctionStatus.ExceptionInformation exceptionEntry : status.getLatestSourceExceptionsList()) {
-                ExceptionInformation exceptionInformation = getExceptionInformation(exceptionEntry);
-                systemExceptionInformationList.add(exceptionInformation);
-            }
-            for (InstanceCommunication.FunctionStatus.ExceptionInformation exceptionEntry : status.getLatestSinkExceptionsList()) {
-                ExceptionInformation exceptionInformation = getExceptionInformation(exceptionEntry);
-                systemExceptionInformationList.add(exceptionInformation);
-            }
-            functionInstanceStatusData.setLatestSystemExceptions(systemExceptionInformationList);
-
-            functionInstanceStatusData.setAverageLatency(status.getAverageLatency());
-            functionInstanceStatusData.setLastInvocationTime(status.getLastInvocationTime());
-            functionInstanceStatusData.setWorkerId(assignedWorkerId);
-
-            return functionInstanceStatusData;
-        }
-
-        @Override
-        public FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData notRunning(String assignedWorkerId, String error) {
-            FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData
-                    = new FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData();
-            functionInstanceStatusData.setRunning(false);
-            if (error != null) {
-                functionInstanceStatusData.setError(error);
-            }
-            functionInstanceStatusData.setWorkerId(assignedWorkerId);
-
-            return functionInstanceStatusData;
-        }
-
-        @Override
-        public FunctionStatus getStatus(String tenant, String namespace, String name, Collection<Function.Assignment>
-                assignments, URI uri) throws PulsarAdminException {
-            FunctionStatus functionStatus = new FunctionStatus();
-            for (Function.Assignment assignment : assignments) {
-                boolean isOwner = worker().getWorkerConfig().getWorkerId().equals(assignment.getWorkerId());
-                FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData;
-                if (isOwner) {
-                    functionInstanceStatusData = getComponentInstanceStatus(tenant, namespace, name, assignment
-                            .getInstance().getInstanceId(), null);
-                } else {
-                    functionInstanceStatusData = worker().getFunctionAdmin().functions().getFunctionStatus(
-                            assignment.getInstance().getFunctionMetaData().getFunctionDetails().getTenant(),
-                            assignment.getInstance().getFunctionMetaData().getFunctionDetails().getNamespace(),
-                            assignment.getInstance().getFunctionMetaData().getFunctionDetails().getName(),
-                            assignment.getInstance().getInstanceId());
-                }
-
-                FunctionStatus.FunctionInstanceStatus instanceStatus = new FunctionStatus.FunctionInstanceStatus();
-                instanceStatus.setInstanceId(assignment.getInstance().getInstanceId());
-                instanceStatus.setStatus(functionInstanceStatusData);
-                functionStatus.addInstance(instanceStatus);
-            }
-
-            functionStatus.setNumInstances(functionStatus.instances.size());
-            functionStatus.getInstances().forEach(functionInstanceStatus -> {
-                if (functionInstanceStatus.getStatus().isRunning()) {
-                    functionStatus.numRunning++;
-                }
-            });
-            return functionStatus;
-        }
-
-        @Override
-        public FunctionStatus getStatusExternal(final String tenant,
-                                                final String namespace,
-                                                final String name,
-                                                final int parallelism) {
-            FunctionStatus functionStatus = new FunctionStatus();
-            for (int i = 0; i < parallelism; ++i) {
-                FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData
-                        = getComponentInstanceStatus(tenant, namespace, name, i, null);
-                FunctionStatus.FunctionInstanceStatus functionInstanceStatus
-                        = new FunctionStatus.FunctionInstanceStatus();
-                functionInstanceStatus.setInstanceId(i);
-                functionInstanceStatus.setStatus(functionInstanceStatusData);
-                functionStatus.addInstance(functionInstanceStatus);
-            }
-
-            functionStatus.setNumInstances(functionStatus.instances.size());
-            functionStatus.getInstances().forEach(functionInstanceStatus -> {
-                if (functionInstanceStatus.getStatus().isRunning()) {
-                    functionStatus.numRunning++;
-                }
-            });
-            return functionStatus;
-        }
-
-        @Override
-        public FunctionStatus emptyStatus(final int parallelism) {
-            FunctionStatus functionStatus = new FunctionStatus();
-            functionStatus.setNumInstances(parallelism);
-            functionStatus.setNumRunning(0);
-            for (int i = 0; i < parallelism; i++) {
-                FunctionStatus.FunctionInstanceStatus functionInstanceStatus = new FunctionStatus.FunctionInstanceStatus();
-                functionInstanceStatus.setInstanceId(i);
-                FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData
-                        = new FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData();
-                functionInstanceStatusData.setRunning(false);
-                functionInstanceStatusData.setError("Function has not been scheduled");
-                functionInstanceStatus.setStatus(functionInstanceStatusData);
-
-                functionStatus.addInstance(functionInstanceStatus);
-            }
-
-            return functionStatus;
-        }
-    }
-
-    private ExceptionInformation getExceptionInformation(InstanceCommunication.FunctionStatus.ExceptionInformation exceptionEntry) {
-        ExceptionInformation exceptionInformation
-                = new ExceptionInformation();
-        exceptionInformation.setTimestampMs(exceptionEntry.getMsSinceEpoch());
-        exceptionInformation.setExceptionString(exceptionEntry.getExceptionString());
-        return exceptionInformation;
-    }
 
     public FunctionsImpl(Supplier<WorkerService> workerServiceSupplier) {
         super(workerServiceSupplier, Function.FunctionDetails.ComponentType.FUNCTION);
     }
 
     /**
+     *
+     * @param tenant
+     * @param namespace
+     * @param functionName
+     * @param uploadedInputStream
+     * @param fileDetail
+     * @param functionPkgUrl
+     * @param functionConfig
+     * @param clientRole
+     * @param clientAuthenticationDataHttps
+     */
+    public void registerFunction(final String tenant,
+                                 final String namespace,
+                                 final String functionName,
+                                 final InputStream uploadedInputStream,
+                                 final FormDataContentDisposition fileDetail,
+                                 final String functionPkgUrl,
+                                 final FunctionConfig functionConfig,
+                                 final String clientRole,
+                                 final AuthenticationDataHttps clientAuthenticationDataHttps) {
+
+        if (!isWorkerServiceAvailable()) {
+            throwUnavailableException();
+        }
+
+        new RegisterFunction(worker()).register(tenant, namespace, functionName, uploadedInputStream, fileDetail,
+                functionPkgUrl, functionConfig, clientRole, clientAuthenticationDataHttps);
+    }
+
+    /**
+     *
+     * @param tenant
+     * @param namespace
+     * @param functionName
+     * @param uploadedInputStream
+     * @param fileDetail
+     * @param functionPkgUrl
+     * @param functionConfig
+     * @param clientRole
+     * @param clientAuthenticationDataHttps
+     * @param updateOptions
+     */
+    public void updateFunction(final String tenant,
+                               final String namespace,
+                               final String functionName,
+                               final InputStream uploadedInputStream,
+                               final FormDataContentDisposition fileDetail,
+                               final String functionPkgUrl,
+                               final FunctionConfig functionConfig,
+                               final String clientRole,
+                               AuthenticationDataHttps clientAuthenticationDataHttps,
+                               UpdateOptions updateOptions) {
+
+    }
+
+    /**
      * Get status of a function instance.  If this worker is not running the function instance,
      * @param tenant the tenant the function belongs to
      * @param namespace the namespace the function belongs to
-     * @param componentName the function name
+     * @param functionName the function name
      * @param instanceId the function instance id
      * @return the function status
      */
-    public FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData getFunctionInstanceStatus(final String tenant,
-                                                                                                      final String namespace,
-                                                                                                      final String componentName,
-                                                                                                      final String instanceId,
-                                                                                                      final URI uri,
-                                                                                                      final String clientRole,
-                                                                                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+    public FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData getFunctionInstanceStatus(
+            final String tenant,
+            final String namespace,
+            final String functionName,
+            final String instanceId,
+            final URI uri,
+            final String clientRole,
+            final AuthenticationDataSource clientAuthenticationDataHttps) {
 
-        // validate parameters
-        componentInstanceStatusRequestValidate(tenant, namespace, componentName, Integer.parseInt(instanceId), clientRole, clientAuthenticationDataHttps);
-
-        FunctionStatus.FunctionInstanceStatus.FunctionInstanceStatusData functionInstanceStatusData;
-        try {
-            functionInstanceStatusData = new GetFunctionStatus().getComponentInstanceStatus(tenant, namespace, componentName,
-                    Integer.parseInt(instanceId), uri);
-        } catch (WebApplicationException we) {
-            throw we;
-        } catch (Exception e) {
-            log.error("{}/{}/{} Got Exception Getting Status", tenant, namespace, componentName, e);
-            throw new RestException(Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
+        if (!isWorkerServiceAvailable()) {
+            throwUnavailableException();
         }
 
-        return functionInstanceStatusData;
+        return new GetFunctionStatus(worker()).getFunctionInstanceStatus(tenant, namespace, functionName,
+                instanceId, uri, clientRole, clientAuthenticationDataHttps);
     }
 
     /**
      * Get statuses of all function instances.
      * @param tenant the tenant the function belongs to
      * @param namespace the namespace the function belongs to
-     * @param componentName the function name
+     * @param functionName the function name
      * @return a list of function statuses
      * @throws PulsarAdminException
      */
     public FunctionStatus getFunctionStatus(final String tenant,
                                             final String namespace,
-                                            final String componentName,
+                                            final String functionName,
                                             final URI uri,
                                             final String clientRole,
                                             final AuthenticationDataSource clientAuthenticationDataHttps) {
 
-        // validate parameters
-        componentStatusRequestValidate(tenant, namespace, componentName, clientRole, clientAuthenticationDataHttps);
-
-        FunctionStatus functionStatus;
-        try {
-            functionStatus = new GetFunctionStatus().getComponentStatus(tenant, namespace, componentName, uri);
-        } catch (WebApplicationException we) {
-            throw we;
-        } catch (Exception e) {
-            log.error("{}/{}/{} Got Exception Getting Status", tenant, namespace, componentName, e);
-            throw new RestException(Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
+        if (!isWorkerServiceAvailable()) {
+            throwUnavailableException();
         }
 
-        return functionStatus;
+        return new GetFunctionStatus(worker()).getFunctionStatus(tenant, namespace, functionName, uri, clientRole, clientAuthenticationDataHttps);
     }
 }
