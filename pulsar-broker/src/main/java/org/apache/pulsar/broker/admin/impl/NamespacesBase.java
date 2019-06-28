@@ -56,6 +56,7 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.admin.AdminResource;
 import org.apache.pulsar.broker.authorization.AuthorizationService;
+import org.apache.pulsar.broker.intercept.InterceptException;
 import org.apache.pulsar.broker.service.BrokerServiceException.SubscriptionBusyException;
 import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.broker.service.Topic;
@@ -98,6 +99,17 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(tenant);
 
         try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getTenantNamespaces(namespaceName, tenant, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
+        try {
             return getListOfNamespaces(tenant);
         } catch (KeeperException.NoNodeException e) {
             log.warn("[{}] Failed to get namespace list for tenant: {} - Does not exist", clientAppId(), tenant);
@@ -113,6 +125,16 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         validatePolicies(namespaceName, policies);
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .createNamespace(namespaceName, policies, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         try {
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
@@ -196,6 +218,17 @@ public abstract class NamespacesBase extends AdminResource {
         if (!isEmpty) {
             log.debug("Found topics on namespace {}", namespaceName);
             throw new RestException(Status.CONFLICT, "Cannot delete non empty namespace");
+        }
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .deleteNamespace(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         }
 
         // set the policies to deleted so that somebody else cannot acquire this namespace
@@ -286,6 +319,7 @@ public abstract class NamespacesBase extends AdminResource {
 
         NamespaceBundle bundle = validateNamespaceBundleOwnership(namespaceName, policies.bundles, bundleRange,
                 authoritative, true);
+
         try {
             List<String> topics = pulsar().getNamespaceService().getListOfPersistentTopics(namespaceName);
             for (String topic : topics) {
@@ -296,10 +330,19 @@ public abstract class NamespacesBase extends AdminResource {
                 }
             }
 
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .deleteNamespaceBundle(namespaceName, bundleRange, clientAppId());
+
             // remove from owned namespace map and ephemeral node from ZK
             pulsar().getNamespaceService().removeOwnedServiceUnit(bundle);
         } catch (WebApplicationException wae) {
             throw wae;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to remove namespace bundle {}/{}", clientAppId(), namespaceName.toString(),
                     bundleRange, e);
@@ -313,6 +356,11 @@ public abstract class NamespacesBase extends AdminResource {
         try {
             AuthorizationService authService = pulsar().getBrokerService().getAuthorizationService();
             if (null != authService) {
+                pulsar().getBrokerService()
+                        .getInterceptService()
+                        .namespaces()
+                        .grantPermissionOnNamespace(namespaceName, role, actions, clientAppId());
+
                 authService.grantPermissionAsync(namespaceName, actions, role, null/*additional auth-data json*/)
                     .get();
             } else {
@@ -321,6 +369,10 @@ public abstract class NamespacesBase extends AdminResource {
         } catch (InterruptedException e) {
             log.error("[{}] Failed to get permissions for namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (ExecutionException e) {
             if (e.getCause() instanceof IllegalArgumentException) {
                 log.warn("[{}] Failed to set permissions for namespace {}: does not exist", clientAppId(),
@@ -345,6 +397,11 @@ public abstract class NamespacesBase extends AdminResource {
         try {
             AuthorizationService authService = pulsar().getBrokerService().getAuthorizationService();
             if (null != authService) {
+                pulsar().getBrokerService()
+                        .getInterceptService()
+                        .namespaces()
+                        .grantPermissionOnSubscription(namespaceName, subscription, roles, clientAppId());
+
                 authService.grantSubscriptionPermissionAsync(namespaceName, subscription, roles,
                         null/* additional auth-data json */).get();
             } else {
@@ -353,6 +410,10 @@ public abstract class NamespacesBase extends AdminResource {
         } catch (InterruptedException e) {
             log.error("[{}] Failed to get permissions for namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (ExecutionException e) {
             if (e.getCause() instanceof IllegalArgumentException) {
                 log.warn("[{}] Failed to set permissions for namespace {}: does not exist", clientAppId(),
@@ -379,6 +440,11 @@ public abstract class NamespacesBase extends AdminResource {
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.auth_policies.namespace_auth.remove(role);
 
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .revokePermissionsOnNamespace(namespaceName, role, clientAppId());
+
             // Write back the new policies into zookeeper
             globalZk().setData(path(POLICIES, namespaceName.toString()), jsonMapper().writeValueAsBytes(policies),
                     nodeStat.getVersion());
@@ -393,6 +459,10 @@ public abstract class NamespacesBase extends AdminResource {
             log.warn("[{}] Failed to revoke permissions on namespace {}: concurrent modification", clientAppId(),
                     namespaceName);
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to revoke permissions on namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -405,6 +475,17 @@ public abstract class NamespacesBase extends AdminResource {
 
         AuthorizationService authService = pulsar().getBrokerService().getAuthorizationService();
         if (null != authService) {
+            try {
+                pulsar().getBrokerService()
+                        .getInterceptService()
+                        .namespaces()
+                        .revokePermissionsOnSubscription(namespaceName, subscriptionName, role, clientAppId());
+            } catch (InterceptException e) {
+                throw new RestException(
+                        e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                        e.getMessage());
+            }
+
             authService.revokeSubscriptionPermissionAsync(namespaceName, subscriptionName, role,
                     null/* additional auth-data json */);
         } else {
@@ -416,6 +497,17 @@ public abstract class NamespacesBase extends AdminResource {
         if (!namespaceName.isGlobal()) {
             throw new RestException(Status.PRECONDITION_FAILED,
                     "Cannot get the replication clusters for a non-global namespace");
+        }
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getNamespaceReplicationClusters(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         }
 
         Policies policies = getNamespacePolicies(namespaceName);
@@ -456,6 +548,11 @@ public abstract class NamespacesBase extends AdminResource {
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
             policiesNode.getKey().replication_clusters = replicationClusterSet;
 
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setNamespaceReplicationClusters(namespaceName, clusterIds, clientAppId());
+
             // Write back the new policies into zookeeper
             globalZk().setData(path(POLICIES, namespaceName.toString()),
                     jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
@@ -473,6 +570,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the replication clusters on namespace {}", clientAppId(), namespaceName,
                     e);
@@ -494,6 +595,12 @@ public abstract class NamespacesBase extends AdminResource {
             // Force to read the data s.t. the watch to the cache content is setup.
             policiesNode = policiesCache().getWithStat(path(POLICIES, namespaceName.toString())).orElseThrow(
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setNamespaceMessageTTL(namespaceName, messageTTL, clientAppId());
+
             policiesNode.getKey().message_ttl_in_seconds = messageTTL;
 
             // Write back the new policies into zookeeper
@@ -512,6 +619,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the message TTL on namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -530,6 +641,11 @@ public abstract class NamespacesBase extends AdminResource {
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
             policiesNode.getKey().deduplicationEnabled = enableDeduplication;
 
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .modifyDeduplication(namespaceName, enableDeduplication, clientAppId());
+
             // Write back the new policies into zookeeper
             globalZk().setData(path(POLICIES, namespaceName.toString()),
                     jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
@@ -547,6 +663,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to modify deplication status on namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -570,6 +690,18 @@ public abstract class NamespacesBase extends AdminResource {
         Policies policies = getNamespacePolicies(namespaceName);
 
         List<String> boundaries = policies.bundles.getBoundaries();
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .unloadNamespace(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         for (int i = 0; i < boundaries.size() - 1; i++) {
             String bundle = String.format("%s_%s", boundaries.get(i), boundaries.get(i + 1));
             try {
@@ -596,6 +728,17 @@ public abstract class NamespacesBase extends AdminResource {
         } else {
             validateClusterOwnership(namespaceName.getCluster());
             validateClusterForTenant(namespaceName.getTenant(), namespaceName.getCluster());
+        }
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setBookieAffinityGroup(namespaceName, bookieAffinityGroup, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         }
 
         try {
@@ -650,6 +793,17 @@ public abstract class NamespacesBase extends AdminResource {
         } else {
             validateClusterOwnership(namespaceName.getCluster());
             validateClusterForTenant(namespaceName.getTenant(), namespaceName.getCluster());
+        }
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getBookieAffinityGroup(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         }
 
         String path = joinPath(LOCAL_POLICIES_ROOT, this.namespaceName.toString());
@@ -713,6 +867,18 @@ public abstract class NamespacesBase extends AdminResource {
 
         NamespaceBundle nsBundle = validateNamespaceBundleOwnership(namespaceName, policies.bundles, bundleRange,
                 authoritative, true);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .unloadNamespaceBundle(namespaceName, bundleRange, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         try {
             pulsar().getNamespaceService().unloadNamespaceBundle(nsBundle);
             log.info("[{}] Successfully unloaded namespace bundle {}", clientAppId(), nsBundle.toString());
@@ -742,6 +908,17 @@ public abstract class NamespacesBase extends AdminResource {
                 authoritative, true);
 
         try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .splitNamespaceBundle(namespaceName, bundleRange, authoritative, unload, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
+        try {
             pulsar().getNamespaceService().splitAndOwnBundle(nsBundle, unload).get();
             log.info("[{}] Successfully split namespace bundle {}", clientAppId(), nsBundle.toString());
         } catch (IllegalArgumentException e) {
@@ -765,6 +942,12 @@ public abstract class NamespacesBase extends AdminResource {
             // Force to read the data s.t. the watch to the cache content is setup.
             policiesNode = policiesCache().getWithStat(path).orElseThrow(
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setTopicDispatchRate(namespaceName, dispatchRate, clientAppId());
+
             policiesNode.getKey().topicDispatchRate.put(pulsar().getConfiguration().getClusterName(), dispatchRate);
 
             // Write back the new policies into zookeeper
@@ -784,6 +967,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the dispatchRate for cluster on namespace {}", clientAppId(),
                     namespaceName, e);
@@ -795,6 +982,18 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         Policies policies = getNamespacePolicies(namespaceName);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getTopicDispatchRate(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         DispatchRate dispatchRate = policies.topicDispatchRate.get(pulsar().getConfiguration().getClusterName());
         if (dispatchRate != null) {
             return dispatchRate;
@@ -815,6 +1014,12 @@ public abstract class NamespacesBase extends AdminResource {
             // Force to read the data s.t. the watch to the cache content is setup.
             policiesNode = policiesCache().getWithStat(path).orElseThrow(
                 () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setSubscriptionDispatchRate(namespaceName, dispatchRate, clientAppId());
+
             policiesNode.getKey().subscriptionDispatchRate.put(pulsar().getConfiguration().getClusterName(), dispatchRate);
 
             // Write back the new policies into zookeeper
@@ -834,6 +1039,10 @@ public abstract class NamespacesBase extends AdminResource {
                 clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the subscriptionDispatchRate for cluster on namespace {}", clientAppId(),
                 namespaceName, e);
@@ -845,6 +1054,18 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         Policies policies = getNamespacePolicies(namespaceName);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getSubscriptionDispatchRate(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         DispatchRate dispatchRate = policies.subscriptionDispatchRate.get(pulsar().getConfiguration().getClusterName());
         if (dispatchRate != null) {
             return dispatchRate;
@@ -865,6 +1086,12 @@ public abstract class NamespacesBase extends AdminResource {
             // Force to read the data s.t. the watch to the cache content is setup.
             policiesNode = policiesCache().getWithStat(path).orElseThrow(
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setSubscribeRate(namespaceName, subscribeRate, clientAppId());
+
             policiesNode.getKey().clusterSubscribeRate.put(pulsar().getConfiguration().getClusterName(), subscribeRate);
 
             // Write back the new policies into zookeeper
@@ -884,6 +1111,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the subscribeRate for cluster on namespace {}", clientAppId(),
                     namespaceName, e);
@@ -894,6 +1125,18 @@ public abstract class NamespacesBase extends AdminResource {
     protected SubscribeRate internalGetSubscribeRate() {
         validateAdminAccessForTenant(namespaceName.getTenant());
         Policies policies = getNamespacePolicies(namespaceName);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getSubscribeRate(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         SubscribeRate subscribeRate = policies.clusterSubscribeRate.get(pulsar().getConfiguration().getClusterName());
         if (subscribeRate != null) {
             return subscribeRate;
@@ -914,6 +1157,12 @@ public abstract class NamespacesBase extends AdminResource {
             // Force to read the data s.t. the watch to the cache content is setup.
             policiesNode = policiesCache().getWithStat(path).orElseThrow(
                 () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setReplicatorDispatchRate(namespaceName, dispatchRate, clientAppId());
+
             policiesNode.getKey().replicatorDispatchRate.put(pulsar().getConfiguration().getClusterName(), dispatchRate);
 
             // Write back the new policies into zookeeper
@@ -933,6 +1182,10 @@ public abstract class NamespacesBase extends AdminResource {
                 clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the replicatorDispatchRate for cluster on namespace {}", clientAppId(),
                 namespaceName, e);
@@ -944,6 +1197,18 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         Policies policies = getNamespacePolicies(namespaceName);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getReplicatorDispatchRate(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         DispatchRate dispatchRate = policies.replicatorDispatchRate.get(pulsar().getConfiguration().getClusterName());
         if (dispatchRate != null) {
             return dispatchRate;
@@ -979,6 +1244,12 @@ public abstract class NamespacesBase extends AdminResource {
                 }
             }
             policies.backlog_quota_map.put(backlogQuotaType, backlogQuota);
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setBacklogQuota(namespaceName, backlogQuotaType, backlogQuota, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated backlog quota map: namespace={}, map={}", clientAppId(), namespaceName,
@@ -994,6 +1265,10 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.CONFLICT, "Concurrent modification");
         } catch (RestException pfe) {
             throw pfe;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update backlog quota map for namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -1014,6 +1289,12 @@ public abstract class NamespacesBase extends AdminResource {
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.backlog_quota_map.remove(backlogQuotaType);
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .removeBacklogQuota(namespaceName, backlogQuotaType, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully removed backlog namespace={}, quota={}", clientAppId(), namespaceName,
@@ -1027,6 +1308,10 @@ public abstract class NamespacesBase extends AdminResource {
             log.warn("[{}] Failed to update backlog quota map for namespace {}: concurrent modification", clientAppId(),
                     namespaceName);
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update backlog quota map for namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -1049,6 +1334,12 @@ public abstract class NamespacesBase extends AdminResource {
                         "Retention Quota must exceed configured backlog quota for namespace.");
             }
             policies.retention_policies = retention;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setRetention(namespaceName, retention, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated retention configuration: namespace={}, map={}", clientAppId(),
@@ -1064,6 +1355,10 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.CONFLICT, "Concurrent modification");
         } catch (RestException pfe) {
             throw pfe;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update retention configuration for namespace {}", clientAppId(), namespaceName,
                     e);
@@ -1082,6 +1377,12 @@ public abstract class NamespacesBase extends AdminResource {
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.persistence = persistence;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setPersistence(namespaceName, persistence, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated persistence configuration: namespace={}, map={}", clientAppId(),
@@ -1095,6 +1396,10 @@ public abstract class NamespacesBase extends AdminResource {
             log.warn("[{}] Failed to update persistence configuration for namespace {}: concurrent modification",
                     clientAppId(), namespaceName);
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update persistence configuration for namespace {}", clientAppId(), namespaceName,
                     e);
@@ -1106,6 +1411,18 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         Policies policies = getNamespacePolicies(namespaceName);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getPersistence(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         if (policies.persistence == null) {
             return new PersistencePolicies(config().getManagedLedgerDefaultEnsembleSize(),
                     config().getManagedLedgerDefaultWriteQuorum(), config().getManagedLedgerDefaultAckQuorum(), 0.0d);
@@ -1118,8 +1435,20 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .clearNamespaceBacklog(namespaceName, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
+        try {
             NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory()
                     .getBundles(namespaceName);
+
             Exception exception = null;
             for (NamespaceBundle nsBundle : bundles.getBundles()) {
                 try {
@@ -1167,6 +1496,17 @@ public abstract class NamespacesBase extends AdminResource {
 
         validateNamespaceBundleOwnership(namespaceName, policies.bundles, bundleRange, authoritative, true);
 
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .clearNamespaceBundleBacklog(namespaceName, bundleRange, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         clearBacklog(namespaceName, bundleRange, null);
         log.info("[{}] Successfully cleared backlog on namespace bundle {}/{}", clientAppId(), namespaceName,
                 bundleRange);
@@ -1174,6 +1514,17 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected void internalClearNamespaceBacklogForSubscription(String subscription, boolean authoritative) {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .clearNamespaceBacklogForSubscription(namespaceName, subscription, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         try {
             NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory()
@@ -1227,6 +1578,17 @@ public abstract class NamespacesBase extends AdminResource {
 
         validateNamespaceBundleOwnership(namespaceName, policies.bundles, bundleRange, authoritative, true);
 
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .clearNamespaceBundleBacklogForSubscription(namespaceName, subscription, bundleRange, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         clearBacklog(namespaceName, bundleRange, subscription);
         log.info("[{}] Successfully cleared backlog for subscription {} on namespace bundle {}/{}", clientAppId(),
                 subscription, namespaceName, bundleRange);
@@ -1234,6 +1596,17 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected void internalUnsubscribeNamespace(String subscription, boolean authoritative) {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .unsubscribeNamespace(namespaceName, subscription, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         try {
             NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory()
@@ -1285,6 +1658,18 @@ public abstract class NamespacesBase extends AdminResource {
 
         validateNamespaceBundleOwnership(namespaceName, policies.bundles, bundleRange, authoritative, true);
 
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .unsubscribeNamespaceBundle(namespaceName, subscription, bundleRange, authoritative, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         unsubscribe(namespaceName, bundleRange, subscription);
         log.info("[{}] Successfully unsubscribed {} on namespace bundle {}/{}", clientAppId(), subscription,
                 namespaceName, bundleRange);
@@ -1304,6 +1689,12 @@ public abstract class NamespacesBase extends AdminResource {
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.subscription_auth_mode = subscriptionAuthMode;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setSubscriptionAuthMode(namespaceName, subscriptionAuthMode, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated subscription auth mode: namespace={}, map={}", clientAppId(),
@@ -1319,6 +1710,10 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.CONFLICT, "Concurrent modification");
         } catch (RestException pfe) {
             throw pfe;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update subscription auth mode for namespace {}", clientAppId(),
                     namespaceName, e);
@@ -1338,6 +1733,11 @@ public abstract class NamespacesBase extends AdminResource {
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
             policiesNode.getKey().encryption_required = encryptionRequired;
 
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .modifyEncryptionRequired(namespaceName, encryptionRequired, clientAppId());
+
             // Write back the new policies into zookeeper
             globalZk().setData(path(POLICIES, namespaceName.toString()),
                     jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
@@ -1355,6 +1755,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to modify encryption required status on namespace {}", clientAppId(), namespaceName,
                     e);
@@ -1381,6 +1785,11 @@ public abstract class NamespacesBase extends AdminResource {
                     () -> new RestException(Status.NOT_FOUND, "Namespace " + namespaceName + " does not exist"));
             policiesNode.getKey().antiAffinityGroup = antiAffinityGroup;
 
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setNamespaceAntiAffinityGroup(namespaceName, antiAffinityGroup, clientAppId());
+
             // Write back the new policies into zookeeper
             globalZk().setData(path(POLICIES, namespaceName.toString()),
                     jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
@@ -1398,6 +1807,10 @@ public abstract class NamespacesBase extends AdminResource {
                     clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the antiAffinityGroup on namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -1406,6 +1819,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected String internalGetNamespaceAntiAffinityGroup() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getNamespaceAntiAffinityGroup(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).antiAffinityGroup;
     }
 
@@ -1421,6 +1846,12 @@ public abstract class NamespacesBase extends AdminResource {
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.antiAffinityGroup = null;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .removeNamespaceAntiAffinityGroup(namespaceName, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully removed anti-affinity group for a namespace={}", clientAppId(), namespaceName);
@@ -1433,6 +1864,10 @@ public abstract class NamespacesBase extends AdminResource {
             log.warn("[{}] Failed to remove anti-affinity group for namespace {}: concurrent modification",
                     clientAppId(), namespaceName);
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to remove anti-affinity group for namespace {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
@@ -1449,6 +1884,17 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.PRECONDITION_FAILED, "anti-affinity group can't be empty.");
         }
         validateClusterExists(cluster);
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getAntiAffinityNamespaces(namespaceName, cluster, antiAffinityGroup, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         try {
             List<String> namespaces = getListOfNamespaces(tenant);
@@ -1587,7 +2033,7 @@ public abstract class NamespacesBase extends AdminResource {
      *
      * @param clusterName:
      *            given cluster whose peer-clusters can't be present into replication-cluster list
-     * @param clusters:
+     * @param replicationClusters:
      *            replication-cluster list
      */
     private void validatePeerClusterConflict(String clusterName, Set<String> replicationClusters) {
@@ -1685,6 +2131,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected int internalGetMaxProducersPerTopic() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getMaxProducersPerTopic(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).max_producers_per_topic;
     }
 
@@ -1702,6 +2160,12 @@ public abstract class NamespacesBase extends AdminResource {
                         "maxProducersPerTopic must be 0 or more");
             }
             policies.max_producers_per_topic = maxProducersPerTopic;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setMaxProducersPerTopic(namespaceName, maxProducersPerTopic, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated maxProducersPerTopic configuration: namespace={}, value={}", clientAppId(),
@@ -1717,6 +2181,10 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.CONFLICT, "Concurrent modification");
         } catch (RestException pfe) {
             throw pfe;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update maxProducersPerTopic configuration for namespace {}", clientAppId(), namespaceName,
                     e);
@@ -1726,6 +2194,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected int internalGetMaxConsumersPerTopic() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getMaxConsumersPerTopic(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).max_consumers_per_topic;
     }
 
@@ -1743,6 +2223,12 @@ public abstract class NamespacesBase extends AdminResource {
                         "maxConsumersPerTopic must be 0 or more");
             }
             policies.max_consumers_per_topic = maxConsumersPerTopic;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setMaxConsumersPerTopic(namespaceName, maxConsumersPerTopic, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated maxConsumersPerTopic configuration: namespace={}, value={}", clientAppId(),
@@ -1767,6 +2253,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected int internalGetMaxConsumersPerSubscription() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getMaxConsumersPerSubscription(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).max_consumers_per_subscription;
     }
 
@@ -1784,6 +2282,12 @@ public abstract class NamespacesBase extends AdminResource {
                         "maxConsumersPerSubscription must be 0 or more");
             }
             policies.max_consumers_per_subscription = maxConsumersPerSubscription;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setMaxConsumersPerSubscription(namespaceName, maxConsumersPerSubscription, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated maxConsumersPerSubscription configuration: namespace={}, value={}", clientAppId(),
@@ -1799,6 +2303,10 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.CONFLICT, "Concurrent modification");
         } catch (RestException pfe) {
             throw pfe;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update maxConsumersPerSubscription configuration for namespace {}", clientAppId(), namespaceName,
                     e);
@@ -1808,6 +2316,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected long internalGetCompactionThreshold() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getCompactionThreshold(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).compaction_threshold;
     }
 
@@ -1825,6 +2345,12 @@ public abstract class NamespacesBase extends AdminResource {
                         "compactionThreshold must be 0 or more");
             }
             policies.compaction_threshold = newThreshold;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setCompactionThreshold(namespaceName, newThreshold, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated compactionThreshold configuration: namespace={}, value={}",
@@ -1849,6 +2375,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected long internalGetOffloadThreshold() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getOffloadThreshold(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).offload_threshold;
     }
 
@@ -1862,6 +2400,12 @@ public abstract class NamespacesBase extends AdminResource {
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.offload_threshold = newThreshold;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setOffloadThreshold(namespaceName, newThreshold, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated offloadThreshold configuration: namespace={}, value={}",
@@ -1886,6 +2430,18 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected Long internalGetOffloadDeletionLag() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getOffloadDeletionLag(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).offload_deletion_lag_ms;
     }
 
@@ -1899,6 +2455,12 @@ public abstract class NamespacesBase extends AdminResource {
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.offload_deletion_lag_ms = newDeletionLagMs;
+
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setOffloadDeletionLag(namespaceName, newDeletionLagMs, clientAppId());
+
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));
             log.info("[{}] Successfully updated offloadDeletionLagMs configuration: namespace={}, value={}",
@@ -1914,6 +2476,10 @@ public abstract class NamespacesBase extends AdminResource {
             throw new RestException(Status.CONFLICT, "Concurrent modification");
         } catch (RestException pfe) {
             throw pfe;
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update offloadDeletionLag configuration for namespace {}",
                       clientAppId(), namespaceName, e);
@@ -1923,12 +2489,35 @@ public abstract class NamespacesBase extends AdminResource {
 
     protected SchemaAutoUpdateCompatibilityStrategy internalGetSchemaAutoUpdateCompatibilityStrategy() {
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getSchemaAutoUpdateCompatibilityStrategy(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).schema_auto_update_compatibility_strategy;
     }
 
     protected void internalSetSchemaAutoUpdateCompatibilityStrategy(SchemaAutoUpdateCompatibilityStrategy strategy) {
         validateSuperUserAccess();
         validatePoliciesReadOnlyAccess();
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setSchemaAutoUpdateCompatibilityStrategy(namespaceName, strategy, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         mutatePolicy((policies) -> {
                 policies.schema_auto_update_compatibility_strategy = strategy;
@@ -1940,12 +2529,35 @@ public abstract class NamespacesBase extends AdminResource {
     protected boolean internalGetSchemaValidationEnforced() {
         validateSuperUserAccess();
         validateAdminAccessForTenant(namespaceName.getTenant());
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .getSchemaValidationEnforced(namespaceName, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
+
         return getNamespacePolicies(namespaceName).schema_validation_enforced;
     }
 
     protected void internalSetSchemaValidationEnforced(boolean schemaValidationEnforced) {
         validateSuperUserAccess();
         validatePoliciesReadOnlyAccess();
+
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .namespaces()
+                    .setSchemaValidationEnforced(namespaceName, schemaValidationEnforced, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         mutatePolicy((policies) -> {
                 policies. schema_validation_enforced = schemaValidationEnforced;

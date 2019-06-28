@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ForkJoinPool;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
@@ -38,6 +39,7 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException.BadVersionException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedCursorInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.zookeeper.AsyncCallback.StringCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -128,7 +130,7 @@ public class MetaStoreImplZookeeper implements MetaStore {
 
     @Override
     public void getManagedLedgerInfo(final String ledgerName, boolean createIfMissing,
-            final MetaStoreCallback<ManagedLedgerInfo> callback) {
+                                     final MetaStoreCallback<ManagedLedgerInfo> callback, Runnable createTopicIntercept) {
         // Try to get the content or create an empty node
         zk.getData(prefix + ledgerName, false,
                 (rc, path, ctx, readData, stat) -> executor.executeOrdered(ledgerName, safeRun(() -> {
@@ -143,6 +145,16 @@ public class MetaStoreImplZookeeper implements MetaStore {
                     } else if (rc == Code.NONODE.intValue()) {
                         // Z-node doesn't exist
                         if (createIfMissing) {
+                            // intercept
+                            if (createTopicIntercept != null) {
+                                try {
+                                    createTopicIntercept.run();
+                                } catch (Exception e) {
+                                    callback.operationFailed(new MetaStoreException(e));
+                                    return;
+                                }
+                            }
+
                             log.info("Creating '{}{}'", prefix, ledgerName);
 
                             StringCallback createcb = (rc1, path1, ctx1, name) -> {

@@ -26,11 +26,16 @@ import java.time.Clock;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.bookkeeper.client.EnsemblePlacementPolicy;
 import org.apache.bookkeeper.client.api.DigestType;
 
 import org.apache.bookkeeper.mledger.impl.NullLedgerOffloader;
+import org.apache.pulsar.common.naming.TopicName;
+
 /**
  * Configuration class for a ManagedLedger.
  */
@@ -68,6 +73,9 @@ public class ManagedLedgerConfig {
     private Map<String, Object> bookKeeperEnsemblePlacementPolicyProperties;
     private LedgerOffloader ledgerOffloader = NullLedgerOffloader.INSTANCE;
     private Clock clock = Clock.systemUTC();
+    @Getter
+    @Setter
+    private Runnable createFunctionInterceptFunc;
 
     public boolean isCreateIfMissing() {
         return createIfMissing;

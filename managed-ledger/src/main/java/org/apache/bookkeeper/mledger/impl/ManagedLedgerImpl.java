@@ -338,7 +338,7 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                     callback.initializeFailed(new ManagedLedgerException(e));
                 }
             }
-        });
+        }, config.getCreateFunctionInterceptFunc());
 
         scheduleTimeoutTask();
     }
