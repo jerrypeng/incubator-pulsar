@@ -37,6 +37,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.broker.authentication.AuthenticationDataHttps;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.intercept.InterceptException;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
@@ -435,6 +436,45 @@ public abstract class ComponentImpl {
             }
 
             functionMetaDataBuilder.setPackageLocation(packageLocationMetaDataBuilder);
+
+            switch ((componentType)) {
+                case FUNCTION:
+                    FunctionConfig functionConfig = FunctionConfigUtils.convertFromDetails(functionMetaDataBuilder.build().getFunctionDetails());
+                    try {
+                        worker().getInterceptService().createFunction(
+                                functionConfig,
+                                clientRole);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());
+                    }
+                    break;
+                case SOURCE:
+                    SourceConfig sourceConfig = SourceConfigUtils.convertFromDetails(functionMetaDataBuilder.build().getFunctionDetails());
+                    try {
+                        worker().getInterceptService().createSource(
+                                sourceConfig,
+                                clientRole);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());                    }
+                    break;
+                case SINK:
+                    SinkConfig sinkConfig = SinkConfigUtils.convertFromDetails(functionMetaDataBuilder.build().getFunctionDetails());
+                    try {
+                        worker().getInterceptService().createSink(
+                                sinkConfig,
+                                clientRole);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());
+                    }
+                    break;
+            }
+
             updateRequest(functionMetaDataBuilder.build());
         } finally {
 
@@ -726,6 +766,62 @@ public abstract class ComponentImpl {
             }
 
             functionMetaDataBuilder.setPackageLocation(packageLocationMetaDataBuilder);
+
+            switch ((componentType)) {
+                case FUNCTION:
+                    FunctionConfig existingFunctionConfig = FunctionConfigUtils.convertFromDetails(existingComponent.getFunctionDetails());
+                    FunctionConfig newFunctionConfig;
+                    try {
+                        newFunctionConfig = ObjectMapperFactory.getThreadLocal().readValue(componentConfigJson, FunctionConfig.class);
+                    } catch (IOException e) {
+                        throw new RestException(Status.BAD_REQUEST, "Invalid function config: " + e.getMessage());
+                    }
+                    try {
+                        worker().getInterceptService().updateFunction(
+                                newFunctionConfig, existingFunctionConfig,
+                                clientRole);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());
+                    }
+                    break;
+                case SOURCE:
+                    SourceConfig existingSourceConfig = SourceConfigUtils.convertFromDetails(existingComponent.getFunctionDetails());
+                    SourceConfig newSourceConfig;
+                    try {
+                        newSourceConfig = ObjectMapperFactory.getThreadLocal().readValue(componentConfigJson, SourceConfig
+                                .class);
+                    } catch (IOException e) {
+                        throw new RestException(Status.BAD_REQUEST, "Invalid source config: " + e.getMessage());
+                    }
+                    try {
+                        worker().getInterceptService().updateSource(
+                                newSourceConfig, existingSourceConfig,
+                                clientRole);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());                    }
+                    break;
+                case SINK:
+                    SinkConfig existingSinkConfig = SinkConfigUtils.convertFromDetails(existingComponent.getFunctionDetails());
+                    SinkConfig newSinkConfig;
+                    try {
+                        newSinkConfig = ObjectMapperFactory.getThreadLocal().readValue(componentConfigJson, SinkConfig.class);
+                    } catch (IOException e) {
+                        throw new RestException(Status.BAD_REQUEST, "Invalid sink config: " + e.getMessage());
+                    }
+                    try {
+                        worker().getInterceptService().updateSink(
+                                newSinkConfig, existingSinkConfig,
+                                clientRole);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());                    }
+                    break;
+            }
 
             updateRequest(functionMetaDataBuilder.build());
         } finally {

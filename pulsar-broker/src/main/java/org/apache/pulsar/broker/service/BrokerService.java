@@ -61,6 +61,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.apache.bookkeeper.common.util.OrderedExecutor;
@@ -82,6 +83,8 @@ import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.authorization.AuthorizationService;
 import org.apache.pulsar.broker.delayed.DelayedDeliveryTrackerFactory;
 import org.apache.pulsar.broker.delayed.DelayedDeliveryTrackerLoader;
+import org.apache.pulsar.broker.intercept.InterceptException;
+import org.apache.pulsar.broker.intercept.InterceptService;
 import org.apache.pulsar.broker.loadbalance.LoadManager;
 import org.apache.pulsar.broker.service.BrokerServiceException.NamingException;
 import org.apache.pulsar.broker.service.BrokerServiceException.NotAllowedException;
@@ -93,6 +96,7 @@ import org.apache.pulsar.broker.service.persistent.PersistentDispatcherMultipleC
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.broker.stats.ClusterReplicationMetrics;
 import org.apache.pulsar.broker.web.PulsarWebResource;
+import org.apache.pulsar.broker.web.RestException;
 import org.apache.pulsar.broker.zookeeper.aspectj.ClientCnxnAspect;
 import org.apache.pulsar.broker.zookeeper.aspectj.ClientCnxnAspect.EventListner;
 import org.apache.pulsar.broker.zookeeper.aspectj.ClientCnxnAspect.EventType;
@@ -135,6 +139,8 @@ import org.apache.zookeeper.data.Stat;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.ws.rs.core.Response;
 
 public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies> {
     private static final Logger log = LoggerFactory.getLogger(BrokerService.class);
@@ -194,6 +200,8 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     private final DelayedDeliveryTrackerFactory delayedDeliveryTrackerFactory;
+
+    private InterceptService interceptService;
 
     public BrokerService(PulsarService pulsar) throws Exception {
         this.pulsar = pulsar;
@@ -280,6 +288,8 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
 
         this.delayedDeliveryTrackerFactory = DelayedDeliveryTrackerLoader
                 .loadDelayedDeliveryTrackerFactory(pulsar.getConfiguration());
+
+        this.interceptService = new InterceptService(pulsar.getConfiguration(), pulsar().getAdminClient());
     }
 
     public void start() throws Exception {
@@ -521,6 +531,14 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
                     new NotAllowedException("Broker is not unable to load non-persistent topic"));
             return topicFuture;
         }
+
+        try {
+            interceptService.createTopic(TopicName.get(topic), null);
+        } catch (InterceptException e) {
+            topicFuture.completeExceptionally(new BrokerServiceException(e));
+            return topicFuture;
+        }
+
         final long topicCreateTimeMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         NonPersistentTopic nonPersistentTopic = new NonPersistentTopic(topic, this);
         CompletableFuture<Void> replicationFuture = nonPersistentTopic.checkReplication();
@@ -785,6 +803,18 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
             managedLedgerConfig.setRetentionSizeInMB(retentionPolicies.getRetentionSizeInMB());
 
             managedLedgerConfig.setLedgerOffloader(pulsar.getManagedLedgerOffloader());
+            managedLedgerConfig.setCreateFunctionInterceptFunc(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        interceptService.createTopic(topicName, null);
+                    } catch (InterceptException e) {
+                        throw new RestException(
+                                e.getErrorCode().orElse(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                                e.getMessage());
+                    }
+                }
+            });
             policies.ifPresent(p -> {
                     long lag = serviceConfig.getManagedLedgerOffloadDeletionLagMs();
                     if (p.offload_deletion_lag_ms != null) {
@@ -1649,5 +1679,9 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
         } else {
             return Optional.empty();
         }
+    }
+
+    public InterceptService getInterceptService() {
+        return interceptService;
     }
 }

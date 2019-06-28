@@ -56,6 +56,7 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.admin.AdminResource;
 import org.apache.pulsar.broker.authorization.AuthorizationService;
+import org.apache.pulsar.broker.intercept.InterceptException;
 import org.apache.pulsar.broker.service.BrokerServiceException.SubscriptionBusyException;
 import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.broker.service.Topic;
@@ -113,6 +114,15 @@ public abstract class NamespacesBase extends AdminResource {
         validateAdminAccessForTenant(namespaceName.getTenant());
 
         validatePolicies(namespaceName, policies);
+        try {
+            pulsar().getBrokerService()
+                    .getInterceptService()
+                    .createNamespace(namespaceName, policies, clientAppId());
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
+        }
 
         try {
             policiesCache().invalidate(path(POLICIES, namespaceName.toString()));

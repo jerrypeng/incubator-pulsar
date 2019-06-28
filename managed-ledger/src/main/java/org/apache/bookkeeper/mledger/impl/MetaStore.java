@@ -19,9 +19,12 @@
 package org.apache.bookkeeper.mledger.impl;
 
 import java.util.List;
+import java.util.function.Function;
+
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedCursorInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
+import org.apache.pulsar.common.naming.TopicName;
 
 /**
  * Interface that describes the operations that the ManagedLedger need to do on the metadata store.
@@ -56,8 +59,11 @@ public interface MetaStore {
      *            whether the managed ledger metadata should be created if it doesn't exist already
      * @throws MetaStoreException
      */
-    void getManagedLedgerInfo(String ledgerName, boolean createIfMissing, MetaStoreCallback<ManagedLedgerInfo> callback);
+    void getManagedLedgerInfo(String ledgerName, boolean createIfMissing, MetaStoreCallback<ManagedLedgerInfo> callback, Runnable createTopicIntercept);
 
+    default void getManagedLedgerInfo(String ledgerName, boolean createIfMissing, MetaStoreCallback<ManagedLedgerInfo> callback) {
+        getManagedLedgerInfo(ledgerName, createIfMissing, callback, null);
+    }
     /**
      *
      * @param ledgerName
