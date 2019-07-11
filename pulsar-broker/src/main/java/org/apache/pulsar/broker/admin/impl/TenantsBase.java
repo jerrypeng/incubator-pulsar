@@ -102,6 +102,7 @@ public class TenantsBase extends AdminResource {
         try {
             pulsar().getBrokerService()
                     .getInterceptService()
+                    .tenants()
                     .createTenant(tenant, config, clientAppId());
         } catch (InterceptException e) {
             throw new RestException(

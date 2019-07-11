@@ -530,7 +530,9 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
         }
 
         try {
-            interceptService.createTopic(TopicName.get(topic), null);
+            interceptService
+                    .topics()
+                    .createTopic(TopicName.get(topic), null);
         } catch (InterceptException e) {
             topicFuture.completeExceptionally(new BrokerServiceException(e));
             return topicFuture;
@@ -804,7 +806,9 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
                 @Override
                 public void run() {
                     try {
-                        interceptService.createTopic(topicName, null);
+                        interceptService
+                                .topics()
+                                .createTopic(topicName, null);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode()),

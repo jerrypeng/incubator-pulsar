@@ -20,19 +20,35 @@ package org.apache.pulsar.broker.intercept;
 
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.common.functions.FunctionConfig;
-import org.apache.pulsar.common.io.SinkConfig;
-import org.apache.pulsar.common.io.SourceConfig;
-import org.apache.pulsar.common.naming.NamespaceName;
-import org.apache.pulsar.common.naming.TopicName;
-import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
-import org.apache.pulsar.common.policies.data.Policies;
-import org.apache.pulsar.common.policies.data.TenantInfo;
 
 /**
  * This class provides a mechanism to intercept various API calls
  */
 public interface InterceptProvider {
+
+    default TenantsInterceptProvider getTenantInterceptProvider() {
+        return new TenantsInterceptProvider() {};
+    }
+
+    default NamespacesInterceptProvider getNamespaceInterceptProvider() {
+        return new NamespacesInterceptProvider() {};
+    }
+
+    default TopicsInterceptProvider getTopicInterceptProvider() {
+        return new TopicsInterceptProvider() {};
+    }
+
+    default FunctionsInterceptProvider getFunctionsInterceptProvider() {
+        return new FunctionsInterceptProvider() {};
+    }
+
+    default SourcesInterceptProvider getSourcesInterceptProvider() {
+        return new SourcesInterceptProvider() {};
+    }
+
+    default SinksInterceptProvider getSinksInterceptProvider() {
+        return new SinksInterceptProvider() {};
+    }
 
     /**
      * Perform initialization for the intercept provider
@@ -40,96 +56,4 @@ public interface InterceptProvider {
      * @param conf broker config object
      */
     default void initialize(ServiceConfiguration conf, PulsarAdmin pulsarAdmin) throws InterceptException {}
-
-    /**
-     * Intercept call for create tenant
-     *
-     * @param tenant tenant name
-     * @param tenantInfo tenant info
-     * @param clientRole the role used to create tenant
-     */
-    default void createTenant(String tenant, TenantInfo tenantInfo, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept call for creating namespace
-     *
-     * @param namespaceName the namespace name
-     * @param policies polices for this namespace
-     * @param clientRole the role used to create namespace
-     */
-    default void createNamespace(NamespaceName namespaceName, Policies policies, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept call for create topic
-     *
-     * @param topicName the topic name
-     * @param clientRole the role used to create topic
-     */
-    default void createTopic(TopicName topicName, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept create partitioned topic
-     *  @param topicName the topic name
-     * @param numPartitions number of partitions to create for this partitioned topic
-     * @param clientRole the role used to create partitioned topic
-     */
-    default void createPartitionedTopic(TopicName topicName, PartitionedTopicMetadata numPartitions, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept update partitioned topic
-     *  @param topicName the topic name
-     * @param numPartitions number of partitions to update to
-     * @param clientRole the role used to update partitioned topic
-     */
-    default void updatePartitionedTopic(TopicName topicName, PartitionedTopicMetadata numPartitions, String clientRole) throws InterceptException {}
-
-
-    /**
-     * Intercept call for create function
-     *
-     * @param functionConfig function config of the function to be created
-     * @param clientRole the role used to create function
-     */
-    default void createFunction(FunctionConfig functionConfig, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept call for update function
-     *  @param functionConfig function config of the function to be updated
-     * @param existingFunctionConfig
-     * @param clientRole the role used to update function
-     */
-    default void updateFunction(FunctionConfig functionConfig, FunctionConfig existingFunctionConfig, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept call for create source
-     *
-     * @param sourceConfig the source config of the source to be created
-     * @param clientRole the role used to create source
-     */
-    default void createSource(SourceConfig sourceConfig, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept call for update source
-     *  @param sourceConfig the source config of the source to be updated
-     * @param existingSourceConfig
-     * @param clientRole the role used to update source
-     */
-    default void updateSource(SourceConfig sourceConfig, SourceConfig existingSourceConfig, String clientRole) throws InterceptException {}
-
-    /**
-     * Intercept call for create sink
-     *
-     * @param sinkConfig the sink config of the sink to be created
-     * @param clientRole the role used to create sink
-     */
-    default void createSink(SinkConfig sinkConfig, String clientRole) throws InterceptException {} ;
-
-    /**
-     * Intercept call for update sink
-     *  @param sinkConfig the sink config of the sink to be updated
-     * @param existingSinkConfig
-     * @param clientRole the role used to update sink
-     */
-    default void updateSink(SinkConfig sinkConfig, SinkConfig existingSinkConfig, String clientRole) throws InterceptException {}
-
 }

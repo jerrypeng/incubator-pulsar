@@ -381,6 +381,7 @@ public class PersistentTopicsBase extends AdminResource {
         try {
             pulsar().getBrokerService()
                     .getInterceptService()
+                    .topics()
                     .createPartitionedTopic(topicName, new PartitionedTopicMetadata(numPartitions), clientAppId());
         } catch (InterceptException e) {
             throw new RestException(
@@ -420,6 +421,7 @@ public class PersistentTopicsBase extends AdminResource {
         try {
             pulsar().getBrokerService()
                     .getInterceptService()
+                    .topics()
                     .createTopic(topicName, clientAppId());
         } catch (InterceptException e) {
             throw new RestException(
@@ -462,6 +464,7 @@ public class PersistentTopicsBase extends AdminResource {
         try {
             pulsar().getBrokerService()
                     .getInterceptService()
+                    .topics()
                     .updatePartitionedTopic(topicName, new PartitionedTopicMetadata(numPartitions), clientAppId());
         } catch (InterceptException e) {
             throw new RestException(

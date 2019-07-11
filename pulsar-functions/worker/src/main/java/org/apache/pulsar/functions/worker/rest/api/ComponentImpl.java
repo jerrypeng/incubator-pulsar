@@ -441,9 +441,9 @@ public abstract class ComponentImpl {
                 case FUNCTION:
                     FunctionConfig functionConfig = FunctionConfigUtils.convertFromDetails(functionMetaDataBuilder.build().getFunctionDetails());
                     try {
-                        worker().getInterceptService().createFunction(
-                                functionConfig,
-                                clientRole);
+                        worker().getInterceptService()
+                                .functions()
+                                .createFunction(functionConfig, clientRole);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
@@ -453,9 +453,9 @@ public abstract class ComponentImpl {
                 case SOURCE:
                     SourceConfig sourceConfig = SourceConfigUtils.convertFromDetails(functionMetaDataBuilder.build().getFunctionDetails());
                     try {
-                        worker().getInterceptService().createSource(
-                                sourceConfig,
-                                clientRole);
+                        worker().getInterceptService()
+                                .sources()
+                                .createSource(sourceConfig, clientRole);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
@@ -464,9 +464,9 @@ public abstract class ComponentImpl {
                 case SINK:
                     SinkConfig sinkConfig = SinkConfigUtils.convertFromDetails(functionMetaDataBuilder.build().getFunctionDetails());
                     try {
-                        worker().getInterceptService().createSink(
-                                sinkConfig,
-                                clientRole);
+                        worker().getInterceptService()
+                                .sinks()
+                                .createSink(sinkConfig, clientRole);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
@@ -777,9 +777,9 @@ public abstract class ComponentImpl {
                         throw new RestException(Status.BAD_REQUEST, "Invalid function config: " + e.getMessage());
                     }
                     try {
-                        worker().getInterceptService().updateFunction(
-                                newFunctionConfig, existingFunctionConfig,
-                                clientRole);
+                        worker().getInterceptService()
+                                .functions()
+                                .updateFunction(newFunctionConfig, existingFunctionConfig, clientRole);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
@@ -796,9 +796,9 @@ public abstract class ComponentImpl {
                         throw new RestException(Status.BAD_REQUEST, "Invalid source config: " + e.getMessage());
                     }
                     try {
-                        worker().getInterceptService().updateSource(
-                                newSourceConfig, existingSourceConfig,
-                                clientRole);
+                        worker().getInterceptService()
+                                .sources()
+                                .updateSource(newSourceConfig, existingSourceConfig, clientRole);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
@@ -813,9 +813,9 @@ public abstract class ComponentImpl {
                         throw new RestException(Status.BAD_REQUEST, "Invalid sink config: " + e.getMessage());
                     }
                     try {
-                        worker().getInterceptService().updateSink(
-                                newSinkConfig, existingSinkConfig,
-                                clientRole);
+                        worker().getInterceptService()
+                                .sinks()
+                                .updateSink(newSinkConfig, existingSinkConfig, clientRole);
                     } catch (InterceptException e) {
                         throw new RestException(
                                 e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
