@@ -1035,6 +1035,10 @@ public abstract class NamespacesBase extends AdminResource {
                 clientAppId(), namespaceName, policiesNode.getValue().getVersion());
 
             throw new RestException(Status.CONFLICT, "Concurrent modification");
+        } catch (InterceptException e) {
+            throw new RestException(
+                    e.getErrorCode().orElse(Status.INTERNAL_SERVER_ERROR.getStatusCode()),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Failed to update the subscriptionDispatchRate for cluster on namespace {}", clientAppId(),
                 namespaceName, e);
