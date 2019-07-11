@@ -29,7 +29,7 @@ public interface NamespacesInterceptProvider {
 
     default void deleteNamespaceBundle(NamespaceName namespaceName, String bundleRange, String clientRole) throws InterceptException {}
 
-    default void setNamespaceMessageTTL(NamespaceName namespaceName, int messageTTL, String s) throws InterceptException {}
+    default void setNamespaceMessageTTL(NamespaceName namespaceName, int messageTTL, String clientRole) throws InterceptException {}
 
     default void grantPermissionOnNamespace(NamespaceName namespaceName, String role, Set<AuthAction> actions, String clientRole) throws InterceptException {}
 
