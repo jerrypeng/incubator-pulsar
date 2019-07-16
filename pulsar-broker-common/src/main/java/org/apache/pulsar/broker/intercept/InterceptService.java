@@ -26,11 +26,8 @@ import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.common.functions.FunctionConfig;
 import org.apache.pulsar.common.io.SinkConfig;
 import org.apache.pulsar.common.io.SourceConfig;
-import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
-import org.apache.pulsar.common.policies.data.Policies;
-import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +41,12 @@ public class InterceptService {
 
     private InterceptProvider provider;
     private final ServiceConfiguration conf;
+    private final TenantsInterceptService tenantInterceptService;
+    private final NamespacesInterceptService namespaceInterceptService;
+    private final TopicInterceptService topicInterceptService;
+    private final FunctionsInterceptService functionInterceptService;
+    private final SinksInterceptService sinkInterceptService;
+    private final SourcesInterceptService sourceInterceptService;
 
     public InterceptService(ServiceConfiguration conf, PulsarAdmin pulsarAdmin)
             throws PulsarServerException {
@@ -58,121 +61,40 @@ public class InterceptService {
             } else {
                 provider = new InterceptProvider() {};
             }
+
+            tenantInterceptService = new TenantsInterceptService(provider.getTenantInterceptProvider());
+            namespaceInterceptService = new NamespacesInterceptService(provider.getNamespaceInterceptProvider());
+            topicInterceptService = new TopicInterceptService(provider.getTopicInterceptProvider());
+            functionInterceptService = new FunctionsInterceptService(provider.getFunctionsInterceptProvider());
+            sourceInterceptService = new SourcesInterceptService(provider.getSourcesInterceptProvider());
+            sinkInterceptService = new SinksInterceptService(provider.getSinksInterceptProvider());
+
         } catch (Throwable e) {
             throw new PulsarServerException("Failed to load an intercept provider.", e);
         }
     }
 
-    /**
-     * Intercept call for create tenant
-     *
-     * @param tenant tenant name
-     * @param tenantInfo tenant info
-     * @param clientRole the role used to create tenant
-     */
-    public void createTenant(String tenant, TenantInfo tenantInfo, String clientRole) throws InterceptException {
-        provider.createTenant(tenant, tenantInfo, clientRole);
+    public TenantsInterceptService tenants() {
+        return tenantInterceptService;
     }
 
-    /**
-     * Intercept call for creating namespace
-     *
-     * @param namespaceName the namespace name
-     * @param policies polices for this namespace
-     * @param clientRole the role used to create namespace
-     */
-    public void createNamespace(NamespaceName namespaceName, Policies policies, String clientRole) throws InterceptException {
-        provider.createNamespace(namespaceName, policies, clientRole);
+    public NamespacesInterceptService namespaces() {
+        return namespaceInterceptService;
     }
 
-    /**
-     * Intercept create partitioned topic
-     * @param topicName the topic name
-     * @param partitionedTopicMetadata metadata related to the partioned topic
-     * @param clientRole the role used to create partitioned topic
-     */
-    public void createPartitionedTopic(TopicName topicName, PartitionedTopicMetadata partitionedTopicMetadata, String clientRole) throws InterceptException {
-        provider.createPartitionedTopic(topicName, partitionedTopicMetadata, clientRole);
+    public TopicInterceptService topics() {
+        return topicInterceptService;
     }
 
-    /**
-     * Intercept call for create topic
-     *
-     * @param topicName the topic name
-     * @param clientRole the role used to create topic
-     */
-    public void createTopic(TopicName topicName, String clientRole) throws InterceptException {
-        provider.createTopic(topicName, clientRole);
+    public FunctionsInterceptService functions() {
+         return functionInterceptService;
     }
 
-    /**
-     * Intercept update partitioned topic
-     * @param topicName the topic name
-     * @param partitionedTopicMetadata metadata related to the partioned topic
-     * @param clientRole the role used to update partitioned topic
-     */
-    public void updatePartitionedTopic(TopicName topicName, PartitionedTopicMetadata partitionedTopicMetadata, String clientRole) throws InterceptException {
-        provider.updatePartitionedTopic(topicName, partitionedTopicMetadata, clientRole);
+    public SourcesInterceptService sources() {
+        return sourceInterceptService;
     }
 
-    /**
-     * Intercept call for create function
-     *
-     * @param functionConfig function config of the function to be created
-     * @param clientRole the role used to create function
-     */
-    public void createFunction(FunctionConfig functionConfig, String clientRole) throws InterceptException {
-        provider.createFunction(functionConfig, clientRole);
-    }
-
-    /**
-     * Intercept call for update source
-     *
-     * @param updates updates to this function's function config
-     * @param existingFunctionConfig the existing function config
-     * @param clientRole the role used to update function
-     */
-    public void updateFunction(FunctionConfig updates, FunctionConfig existingFunctionConfig, String clientRole) throws InterceptException {
-        provider.updateFunction(updates, existingFunctionConfig, clientRole);
-    }
-
-    /**
-     * Intercept call for create source
-     *
-     * @param sourceConfig the source config of the source to be created
-     * @param clientRole the role used to create source
-     */
-    public void createSource(SourceConfig sourceConfig, String clientRole) throws InterceptException {
-        provider.createSource(sourceConfig, clientRole);
-    }
-
-    /**
-     * Intercept call for update source
-     *  @param updates updates to this source's source config
-     * @param existingSourceConfig the existing source config
-     * @param clientRole the role used to update source
-     */
-    public void updateSource(SourceConfig updates, SourceConfig existingSourceConfig, String clientRole) throws InterceptException {
-        provider.updateSource(updates, existingSourceConfig, clientRole);
-    }
-
-    /**
-     * Intercept call for create sink
-     *
-     * @param sinkConfig the sink config of the sink to be created
-     * @param clientRole the role used to create sink
-     */
-    public void createSink(SinkConfig sinkConfig, String clientRole) throws InterceptException {
-        provider.createSink(sinkConfig, clientRole);
-    }
-
-    /**
-     * Intercept call for update sink
-     *  @param updates updates to this sink's source config
-     * @param existingSinkConfig the existing source config
-     * @param clientRole the role used to update sink
-     */
-    public void updateSink(SinkConfig updates, SinkConfig existingSinkConfig, String clientRole) throws InterceptException {
-        provider.updateSink(updates, existingSinkConfig, clientRole);
+    public SinksInterceptService sinks() {
+        return sinkInterceptService;
     }
 }

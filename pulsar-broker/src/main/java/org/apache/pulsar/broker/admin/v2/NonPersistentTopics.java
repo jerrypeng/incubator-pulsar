@@ -122,6 +122,7 @@ public class NonPersistentTopics extends PersistentTopics {
         try {
             pulsar().getBrokerService()
                     .getInterceptService()
+                    .topics()
                     .createPartitionedTopic(topicName, new PartitionedTopicMetadata(numPartitions), clientAppId());
         } catch (InterceptException e) {
             throw new RestException(
