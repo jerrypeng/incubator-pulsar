@@ -228,10 +228,7 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
         this.workerGroup = EventLoopUtil.newEventLoopGroup(numThreads, workersThreadFactory);
         this.statsUpdater = Executors
                 .newSingleThreadScheduledExecutor(new DefaultThreadFactory("pulsar-stats-updater"));
-        if (pulsar.getConfiguration().isAuthorizationEnabled()) {
-            this.authorizationService = new AuthorizationService(pulsar.getConfiguration(),
-                    pulsar.getConfigurationCache());
-        }
+        this.authorizationService = new AuthorizationService(pulsar.getConfiguration(), pulsar.getConfigurationCache());
 
         if (pulsar.getConfigurationCache() != null) {
             pulsar.getConfigurationCache().policiesCache().registerListener(this);
@@ -1177,7 +1174,7 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
     }
 
     public boolean isAuthorizationEnabled() {
-        return authorizationService != null;
+        return pulsar.getConfiguration().isAuthorizationEnabled();
     }
 
     public int getKeepAliveIntervalSeconds() {

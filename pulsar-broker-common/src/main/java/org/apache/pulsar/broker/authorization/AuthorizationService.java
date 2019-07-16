@@ -47,25 +47,20 @@ public class AuthorizationService {
 
     public AuthorizationService(ServiceConfiguration conf, ConfigurationCacheService configCache)
             throws PulsarServerException {
-
         this.conf = conf;
-        if (this.conf.isAuthorizationEnabled()) {
-            try {
-                final String providerClassname = conf.getAuthorizationProvider();
-                if (StringUtils.isNotBlank(providerClassname)) {
-                    provider = (AuthorizationProvider) Class.forName(providerClassname).newInstance();
-                    provider.initialize(conf, configCache);
-                    log.info("{} has been loaded.", providerClassname);
-                } else {
-                    throw new PulsarServerException("No authorization providers are present.");
-                }
-            } catch (PulsarServerException e) {
-                throw e;
-            } catch (Throwable e) {
-                throw new PulsarServerException("Failed to load an authorization provider.", e);
+        try {
+            final String providerClassname = conf.getAuthorizationProvider();
+            if (StringUtils.isNotBlank(providerClassname)) {
+                provider = (AuthorizationProvider) Class.forName(providerClassname).newInstance();
+                provider.initialize(conf, configCache);
+                log.info("{} has been loaded.", providerClassname);
+            } else {
+                throw new PulsarServerException("No authorization providers are present.");
             }
-        } else {
-            log.info("Authorization is disabled");
+        } catch (PulsarServerException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new PulsarServerException("Failed to load an authorization provider.", e);
         }
     }
 
@@ -102,7 +97,7 @@ public class AuthorizationService {
 
     /**
      * Grant permission to roles that can access subscription-admin api
-     * 
+     *
      * @param namespace
      * @param subscriptionName
      * @param roles
@@ -121,7 +116,7 @@ public class AuthorizationService {
 
     /**
      * Revoke subscription admin-api access for a role
-     * 
+     *
      * @param namespace
      * @param subscriptionName
      * @param role
@@ -134,7 +129,7 @@ public class AuthorizationService {
         }
         return FutureUtil.failedFuture(new IllegalStateException("No authorization provider configured"));
     }
-    
+
     /**
      * Grant authorization-action permission on a topic to the given client
      *
