@@ -21,6 +21,8 @@ package org.apache.pulsar.sql.presto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.airlift.configuration.Config;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.admin.PulsarAdminBuilder;
+import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.bookkeeper.stats.NullStatsProvider;
 import org.apache.pulsar.common.protocol.Commands;
@@ -41,6 +43,11 @@ public class PulsarConnectorConfig implements AutoCloseable {
     private int maxMessageSize = Commands.DEFAULT_MAX_MESSAGE_SIZE;
     private String statsProvider = NullStatsProvider.class.getName();
     private Map<String, String> statsProviderConfigs = new HashMap<>();
+    private String authPluginClassName;
+    private String authParams;
+    private String tlsTrustCertsFilePath;
+    private Boolean tlsAllowInsecureConnection;
+    private Boolean tlsHostnameVerificationEnable;
 
     /**** --- Ledger Offloading --- ****/
     private String managedLedgerOffloadDriver = null;
@@ -191,10 +198,80 @@ public class PulsarConnectorConfig implements AutoCloseable {
         return this;
     }
 
+    /**** --- Authentication --- ****/
+
+    public String getAuthPlugin() {
+        return this.authPluginClassName;
+    }
+
+    @Config("pulsar.auth-plugin")
+    public PulsarConnectorConfig setAuthPlugin(String authPluginClassName) throws IOException {
+        this.authPluginClassName = authPluginClassName;
+        return this;
+    }
+
+    public String getAuthParams() {
+        return this.authParams;
+    }
+
+    @Config("pulsar.auth-params")
+    public PulsarConnectorConfig setAuthParams(String authParams) throws IOException {
+        this.authParams = authParams;
+        return this;
+    }
+
+    public Boolean isTlsAllowInsecureConnection() {
+        return tlsAllowInsecureConnection;
+    }
+
+    @Config("pulsar.tls-allow-insecure-connection")
+    public PulsarConnectorConfig setTlsAllowInsecureConnection(boolean tlsAllowInsecureConnection) {
+        this.tlsAllowInsecureConnection = tlsAllowInsecureConnection;
+        return this;
+    }
+
+    public Boolean isTlsHostnameVerificationEnable() {
+        return tlsHostnameVerificationEnable;
+    }
+
+    @Config("pulsar.tls-hostname-verification-enable")
+    public PulsarConnectorConfig setTlsHostnameVerificationEnable(boolean tlsHostnameVerificationEnable) {
+        this.tlsHostnameVerificationEnable = tlsHostnameVerificationEnable;
+        return this;
+    }
+
+    public String getTlsTrustCertsFilePath() {
+        return tlsTrustCertsFilePath;
+    }
+
+    @Config("pulsar.tls-trust-cert-file-path")
+    public PulsarConnectorConfig setTlsTrustCertsFilePath(String tlsTrustCertsFilePath) {
+        this.tlsTrustCertsFilePath = tlsTrustCertsFilePath;
+        return this;
+    }
+
     @NotNull
     public PulsarAdmin getPulsarAdmin() throws PulsarClientException {
         if (this.pulsarAdmin == null) {
-            this.pulsarAdmin = PulsarAdmin.builder().serviceHttpUrl(getBrokerServiceUrl()).build();
+            PulsarAdminBuilder builder = PulsarAdmin.builder();
+
+            if (getAuthPlugin() != null) {
+                builder.authentication(getAuthPlugin(), getAuthParams());
+            }
+
+            if (isTlsAllowInsecureConnection() != null) {
+                builder.allowTlsInsecureConnection(isTlsAllowInsecureConnection());
+            }
+
+            if (isTlsHostnameVerificationEnable() != null) {
+                builder.enableTlsHostnameVerification(isTlsHostnameVerificationEnable());
+            }
+
+            if (getTlsTrustCertsFilePath() != null) {
+                builder.tlsTrustCertsFilePath(getTlsTrustCertsFilePath());
+            }
+
+            this.pulsarAdmin = builder.serviceHttpUrl(getBrokerServiceUrl()).build();
         }
         return this.pulsarAdmin;
     }

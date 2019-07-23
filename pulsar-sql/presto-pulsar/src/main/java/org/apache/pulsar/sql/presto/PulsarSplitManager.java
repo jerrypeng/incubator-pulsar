@@ -23,6 +23,7 @@ import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.facebook.presto.spi.FixedSplitSource;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.predicate.Domain;
@@ -56,6 +57,7 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
+import static com.facebook.presto.spi.StandardErrorCode.QUERY_REJECTED;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 import static org.apache.bookkeeper.mledger.ManagedCursor.FindPositionConstraint.SearchAllAvailableEntries;
@@ -101,7 +103,13 @@ public class PulsarSplitManager implements ConnectorSplitManager {
             schemaInfo = this.pulsarAdmin.schemas().getSchemaInfo(
                     String.format("%s/%s", tableHandle.getSchemaName(), tableHandle.getTableName()));
         } catch (PulsarAdminException e) {
-            throw new RuntimeException("Failed to get schema for topic "
+            if (e.getStatusCode() == 401) {
+                throw new PrestoException(QUERY_REJECTED,
+                        String.format("Failed to get pulsar topic schema for topic %s/%s: Unauthorized",
+                                tableHandle.getSchemaName(), tableHandle.getTableName()));
+            }
+
+            throw new RuntimeException("Failed to get pulsar topic schema for topic "
                     + String.format("%s/%s", tableHandle.getSchemaName(), tableHandle.getTableName())
                     + ": " + ExceptionUtils.getRootCause(e).getLocalizedMessage(), e);
         }
@@ -139,6 +147,11 @@ public class PulsarSplitManager implements ConnectorSplitManager {
         try {
             numPartitions = (this.pulsarAdmin.topics().getPartitionedTopicMetadata(topicName.toString())).partitions;
         } catch (PulsarAdminException e) {
+            if (e.getStatusCode() == 401) {
+                throw new PrestoException(QUERY_REJECTED,
+                        String.format("Failed to get metadata for partitioned topic %s: Unauthorized", topicName));
+            }
+
             throw new RuntimeException("Failed to get metadata for partitioned topic "
                     + topicName + ": " + ExceptionUtils.getRootCause(e).getLocalizedMessage(),e);
         }
