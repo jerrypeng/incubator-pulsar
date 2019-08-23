@@ -18,8 +18,17 @@
  */
 package org.apache.pulsar.client.impl;
 
+import static org.testng.Assert.assertEquals;
+
 import com.google.common.collect.Sets;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.Future;
+
+import org.apache.commons.collections4.IterableUtils;
 import org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.MessageRoutingMode;
@@ -32,10 +41,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import java.util.HashSet;
-import java.util.Set;
-import java.util.concurrent.Future;
 
 public class ReaderTest extends MockedPulsarServiceBaseTest {
 
@@ -132,5 +137,22 @@ public class ReaderTest extends MockedPulsarServiceBaseTest {
             Assert.assertTrue(keys.remove(message.getKey()));
         }
         Assert.assertTrue(keys.isEmpty());
+    }
+
+    @Test
+    public void testReaderCleanup() throws Exception {
+        String topic = "persistent://my-property/my-ns/testReaderCleanup";
+        Reader<byte[]> reader = pulsarClient.newReader()
+                .topic(topic)
+                .startMessageId(MessageId.earliest)
+                .create();
+
+        PersistentTopic t = (PersistentTopic) pulsar.getBrokerService().getTopicReference(topic).get();
+        assertEquals(IterableUtils.size(t.getManagedLedger().getCursors()), 1);
+
+
+        reader.close();
+        // The non-durable managed cursor should have been cleaned up after the reader disconnects
+        assertEquals(IterableUtils.size(t.getManagedLedger().getCursors()), 0);
     }
 }

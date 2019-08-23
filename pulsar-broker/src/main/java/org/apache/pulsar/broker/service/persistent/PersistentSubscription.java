@@ -233,6 +233,12 @@ public class PersistentSubscription implements Subscription {
             if (!cursor.isDurable()) {
                 // If cursor is not durable, we need to clean up the subscription as well
                 close();
+                try {
+                    topic.getManagedLedger().deleteCursor(cursor.getName());
+                } catch (InterruptedException | ManagedLedgerException e) {
+                    log.warn("[{}] [{}] Failed to remove non durable cursor", topic.getName(), subName, e);
+                }
+
                 // when topic closes: it iterates through concurrent-subscription map to close each subscription. so,
                 // topic.remove again try to access same map which creates deadlock. so, execute it in different thread.
                 topic.getBrokerService().pulsar().getExecutor().submit(() ->{
@@ -624,58 +630,39 @@ public class PersistentSubscription implements Subscription {
             return;
         }
 
-        final CompletableFuture<Void> disconnectFuture;
-        if (dispatcher != null && dispatcher.isConsumerConnected()) {
-            disconnectFuture = dispatcher.disconnectAllConsumers();
-        } else {
-            disconnectFuture = CompletableFuture.completedFuture(null);
+        try {
+            cursor.asyncResetCursor(finalPosition, new AsyncCallbacks.ResetCursorCallback() {
+                @Override
+                public void resetComplete(Object ctx) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("[{}][{}] Successfully reset subscription to position {}", topicName, subName,
+                                finalPosition);
+                    }
+                    IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
+                    future.complete(null);
+                }
+
+                @Override
+                public void resetFailed(ManagedLedgerException exception, Object ctx) {
+                    log.error("[{}][{}] Failed to reset subscription to position {}", topicName, subName,
+                            finalPosition, exception);
+                    IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
+                    // todo - retry on InvalidCursorPositionException
+                    // or should we just ask user to retry one more time?
+                    if (exception instanceof InvalidCursorPositionException) {
+                        future.completeExceptionally(new SubscriptionInvalidCursorPosition(exception.getMessage()));
+                    } else if (exception instanceof ConcurrentFindCursorPositionException) {
+                        future.completeExceptionally(new SubscriptionBusyException(exception.getMessage()));
+                    } else {
+                        future.completeExceptionally(new BrokerServiceException(exception));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.error("[{}][{}] Error while resetting cursor", topicName, subName, e);
+            IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
+            future.completeExceptionally(new BrokerServiceException(e));
         }
-
-        disconnectFuture.whenComplete((aVoid, throwable) -> {
-            if (throwable != null) {
-                log.error("[{}][{}] Failed to disconnect consumer from subscription", topicName, subName, throwable);
-                IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
-                future.completeExceptionally(
-                        new SubscriptionBusyException("Failed to disconnect consumers from subscription"));
-                return;
-            }
-            log.info("[{}][{}] Successfully disconnected consumers from subscription, proceeding with cursor reset",
-                    topicName, subName);
-
-            try {
-                cursor.asyncResetCursor(finalPosition, new AsyncCallbacks.ResetCursorCallback() {
-                    @Override
-                    public void resetComplete(Object ctx) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("[{}][{}] Successfully reset subscription to position {}", topicName, subName,
-                                    finalPosition);
-                        }
-                        IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
-                        future.complete(null);
-                    }
-
-                    @Override
-                    public void resetFailed(ManagedLedgerException exception, Object ctx) {
-                        log.error("[{}][{}] Failed to reset subscription to position {}", topicName, subName,
-                                finalPosition, exception);
-                        IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
-                        // todo - retry on InvalidCursorPositionException
-                        // or should we just ask user to retry one more time?
-                        if (exception instanceof InvalidCursorPositionException) {
-                            future.completeExceptionally(new SubscriptionInvalidCursorPosition(exception.getMessage()));
-                        } else if (exception instanceof ConcurrentFindCursorPositionException) {
-                            future.completeExceptionally(new SubscriptionBusyException(exception.getMessage()));
-                        } else {
-                            future.completeExceptionally(new BrokerServiceException(exception));
-                        }
-                    }
-                });
-            } catch (Exception e) {
-                log.error("[{}][{}] Error while resetting cursor", topicName, subName, e);
-                IS_FENCED_UPDATER.set(PersistentSubscription.this, FALSE);
-                future.completeExceptionally(new BrokerServiceException(e));
-            }
-        });
     }
 
     @Override
