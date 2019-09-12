@@ -126,81 +126,82 @@ public class MockZooKeeper extends ZooKeeper {
     public String create(String path, byte[] data, List<ACL> acl, CreateMode createMode)
             throws KeeperException, InterruptedException {
         mutex.lock();
-        try {
-            checkProgrammedFail();
 
-            if (stopped)
-                throw new KeeperException.ConnectionLossException();
+        checkProgrammedFail();
 
-            if (tree.containsKey(path)) {
-                throw new KeeperException.NodeExistsException(path);
-            }
+        if (stopped)
+            throw new KeeperException.ConnectionLossException();
 
-            final String parent = path.substring(0, path.lastIndexOf("/"));
-            if (!parent.isEmpty() && !tree.containsKey(parent)) {
-                throw new KeeperException.NoNodeException();
-            }
-
-            if (createMode == CreateMode.EPHEMERAL_SEQUENTIAL || createMode == CreateMode.PERSISTENT_SEQUENTIAL) {
-                byte[] parentData = tree.get(parent).getLeft();
-                int parentVersion = tree.get(parent).getRight();
-                path = path + parentVersion;
-
-                // Update parent version
-                tree.put(parent, Pair.of(parentData, parentVersion + 1));
-            }
-
-            tree.put(path, Pair.of(data, 0));
-
-            final Set<Watcher> toNotifyCreate = Sets.newHashSet();
-            toNotifyCreate.addAll(watchers.get(path));
-
-            final Set<Watcher> toNotifyParent = Sets.newHashSet();
-            if (!parent.isEmpty()) {
-                toNotifyParent.addAll(watchers.get(parent));
-            }
-            watchers.removeAll(path);
-            final String finalPath = path;
-            executor.execute(() -> {
-                    toNotifyCreate.forEach(
-                            watcher -> watcher.process(
-                                    new WatchedEvent(EventType.NodeCreated,
-                                                     KeeperState.SyncConnected,
-                                                     finalPath)));
-                    toNotifyParent.forEach(
-                            watcher -> watcher.process(
-                                    new WatchedEvent(EventType.NodeChildrenChanged,
-                                                     KeeperState.SyncConnected,
-                                                     parent)));
-                });
-
-            return path;
-        } finally {
-            mutex.unlock();
+        if (tree.containsKey(path)) {
+            throw new KeeperException.NodeExistsException(path);
         }
 
-    }
-
-    @Override
-    public void create(final String path, final byte[] data, final List<ACL> acl, CreateMode createMode,
-            final StringCallback cb, final Object ctx) {
-        if (stopped) {
-            cb.processResult(KeeperException.Code.CONNECTIONLOSS.intValue(), path, ctx, null);
-            return;
+        final String parent = path.substring(0, path.lastIndexOf("/"));
+        if (!parent.isEmpty() && !tree.containsKey(parent)) {
+            throw new KeeperException.NoNodeException();
         }
+
+        if (createMode == CreateMode.EPHEMERAL_SEQUENTIAL || createMode == CreateMode.PERSISTENT_SEQUENTIAL) {
+            byte[] parentData = tree.get(parent).getLeft();
+            int parentVersion = tree.get(parent).getRight();
+            path = path + parentVersion;
+
+            // Update parent version
+            tree.put(parent, Pair.of(parentData, parentVersion + 1));
+        }
+
+        tree.put(path, Pair.of(data, 0));
 
         final Set<Watcher> toNotifyCreate = Sets.newHashSet();
         toNotifyCreate.addAll(watchers.get(path));
 
         final Set<Watcher> toNotifyParent = Sets.newHashSet();
-        final String parent = path.substring(0, path.lastIndexOf("/"));
         if (!parent.isEmpty()) {
             toNotifyParent.addAll(watchers.get(parent));
         }
         watchers.removeAll(path);
+        final String finalPath = path;
+        mutex.unlock();
+
+        executor.execute(() -> {
+
+            toNotifyCreate.forEach(
+                    watcher -> watcher.process(
+                            new WatchedEvent(EventType.NodeCreated,
+                                    KeeperState.SyncConnected,
+                                    finalPath)));
+            toNotifyParent.forEach(
+                    watcher -> watcher.process(
+                            new WatchedEvent(EventType.NodeChildrenChanged,
+                                    KeeperState.SyncConnected,
+                                    parent)));
+        });
+
+        return path;
+    }
+
+    @Override
+    public void create(final String path, final byte[] data, final List<ACL> acl, CreateMode createMode,
+            final StringCallback cb, final Object ctx) {
+
 
         executor.execute(() -> {
             mutex.lock();
+
+            if (stopped) {
+                cb.processResult(KeeperException.Code.CONNECTIONLOSS.intValue(), path, ctx, null);
+                return;
+            }
+
+            final Set<Watcher> toNotifyCreate = Sets.newHashSet();
+            toNotifyCreate.addAll(watchers.get(path));
+
+            final Set<Watcher> toNotifyParent = Sets.newHashSet();
+            final String parent = path.substring(0, path.lastIndexOf("/"));
+            if (!parent.isEmpty()) {
+                toNotifyParent.addAll(watchers.get(parent));
+            }
+
             if (getProgrammedFailStatus()) {
                 mutex.unlock();
                 cb.processResult(failReturnCode.intValue(), path, ctx, null);
@@ -215,6 +216,7 @@ public class MockZooKeeper extends ZooKeeper {
                 cb.processResult(KeeperException.Code.NONODE.intValue(), path, ctx, null);
             } else {
                 tree.put(path, Pair.of(data, 0));
+                watchers.removeAll(path);
                 mutex.unlock();
                 cb.processResult(0, path, ctx, null);
 
@@ -331,6 +333,12 @@ public class MockZooKeeper extends ZooKeeper {
                 return;
             }
 
+            if (!tree.containsKey(path)) {
+                mutex.unlock();
+                cb.processResult(KeeperException.Code.NoNode, path, ctx, null);
+                return;
+            }
+
             List<String> children = Lists.newArrayList();
             for (String item : tree.tailMap(path).keySet()) {
                 if (!item.startsWith(path)) {
@@ -347,12 +355,12 @@ public class MockZooKeeper extends ZooKeeper {
                 }
             }
 
-            mutex.unlock();
-
-            cb.processResult(0, path, ctx, children);
             if (watcher != null) {
                 watchers.put(path, watcher);
             }
+            mutex.unlock();
+
+            cb.processResult(0, path, ctx, children);
         });
     }
 
