@@ -288,6 +288,13 @@ message CommandSubscribe {
     // to periodically sync the state of replicated subscriptions
     // across different clusters (when using geo-replication).
     optional bool replicate_subscription_state = 14;
+    
+    // If true, the subscribe operation will cause a topic to be 
+    // created if it does not exist already (and if topic auto-creation
+    // is allowed by broker.
+    // If false, the subscribe operation will fail if the topic 
+    // does not exist.
+    optional bool force_topic_creation = 15 [default = true];
 }
 
 message CommandPartitionedTopicMetadata {
