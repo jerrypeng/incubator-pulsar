@@ -137,15 +137,15 @@ public class PersistentDispatcherMultipleConsumers extends AbstractDispatcherMul
             messagesToRedeliver.clear();
         }
 
-        if (isConsumersExceededOnTopic()) {
-            log.warn("[{}] Attempting to add consumer to topic which reached max consumers limit", name);
-            throw new ConsumerBusyException("Topic reached max consumers limit");
-        }
-
-        if (isConsumersExceededOnSubscription()) {
-            log.warn("[{}] Attempting to add consumer to subscription which reached max consumers limit", name);
-            throw new ConsumerBusyException("Subscription reached max consumers limit");
-        }
+//        if (isConsumersExceededOnTopic()) {
+//            log.warn("[{}] Attempting to add consumer to topic which reached max consumers limit", name);
+//            throw new ConsumerBusyException("Topic reached max consumers limit");
+//        }
+//
+//        if (isConsumersExceededOnSubscription()) {
+//            log.warn("[{}] Attempting to add consumer to subscription which reached max consumers limit", name);
+//            throw new ConsumerBusyException("Subscription reached max consumers limit");
+//        }
 
         consumerList.add(consumer);
         consumerList.sort((c1, c2) -> c1.getPriorityLevel() - c2.getPriorityLevel());
