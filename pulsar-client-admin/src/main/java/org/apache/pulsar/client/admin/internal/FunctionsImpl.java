@@ -991,14 +991,12 @@ public class FunctionsImpl extends ComponentResource implements Functions {
                                      boolean delete) throws PulsarAdminException {
         try {
             updateOnWorkerLeaderAsync(tenant, namespace, function,
-                    functionMetaData, delete).get(this.readTimeoutMs, TimeUnit.MILLISECONDS);
+                    functionMetaData, delete).get();
         } catch (ExecutionException e) {
             throw (PulsarAdminException) e.getCause();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new PulsarAdminException(e);
-        } catch (TimeoutException e) {
-            throw new PulsarAdminException.TimeoutException(e);
         }
     }
 
@@ -1011,17 +1009,20 @@ public class FunctionsImpl extends ComponentResource implements Functions {
                     put(functions.path("leader").path(tenant).path(namespace)
                             .path(function).getUri().toASCIIString())
                             .addBodyPart(new ByteArrayPart("functionMetaData", functionMetaData))
-                    .addBodyPart(new StringPart("delete", Boolean.toString(delete)));
+                            .addBodyPart(new StringPart("delete", Boolean.toString(delete)));
 
             asyncHttpClient.executeRequest(addAuthHeaders(functions, builder).build())
                     .toCompletableFuture()
                     .thenAccept(response -> {
                         if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
-                            future.completeExceptionally(
-                                    getApiException(Response
-                                            .status(response.getStatusCode())
-                                            .entity(response.getResponseBody())
-                                            .build()));
+                            try {
+                                getApiException(Response
+                                        .status(response.getStatusCode())
+                                        .entity(response.getResponseBody())
+                                        .build());
+                            } catch (Exception e) {
+                                future.completeExceptionally(getApiException(e));
+                            }
                         } else {
                             future.complete(null);
                         }
